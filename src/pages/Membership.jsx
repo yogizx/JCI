@@ -1,6 +1,83 @@
 import { useState, useEffect } from 'react'
 import { Calendar, MapPin, CheckCircle2, Briefcase, ChevronRight } from 'lucide-react'
 
+const initialFormData = {
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  state: '',
+  city: '',
+  cityLocal: '',
+  pincode: '',
+  profession: ''
+}
+
+const successMessage = 'Interest submitted! Our team will contact you soon.'
+const membershipSubmitMode = import.meta.env.VITE_MEMBERSHIP_SUBMIT_MODE || 'formsubmit'
+const formSubmitEmail = import.meta.env.VITE_FORMSUBMIT_EMAIL || 'mdp.itme@gmail.com'
+
+const readJsonSafely = async (response) => {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+const submitInterestToBackend = async (formData) => {
+  const response = await fetch('/api/interest/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formData),
+  })
+
+  const data = await readJsonSafely(response)
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    message: data?.message || 'Submission failed',
+  }
+}
+
+const submitInterestToFormSubmit = async (formData) => {
+  if (!formSubmitEmail) {
+    return { ok: false, message: 'Email service is not configured yet.' }
+  }
+
+  const response = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(formSubmitEmail)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone,
+      address: formData.address,
+      state: formData.state,
+      district: formData.city,
+      city: formData.cityLocal,
+      pincode: formData.pincode,
+      profession: formData.profession,
+      _replyto: formData.email,
+      _subject: `New Membership Interest: ${formData.name}`,
+      _template: 'table',
+      _captcha: 'false',
+    }),
+  })
+
+  const data = await readJsonSafely(response)
+
+  return {
+    ok: response.ok && data?.success !== false,
+    status: response.status,
+    message: data?.message || 'Email delivery failed. Please try again later.',
+  }
+}
+
 const heroSlides = [
   {
     src: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=2012&auto=format&fit=crop",
@@ -27,6 +104,57 @@ const heroSlides = [
 export default function Membership() {
   const [activeSlide, setActiveSlide] = useState(0)
   const [fade, setFade] = useState(true)
+  
+  // Form State
+  const [formData, setFormData] = useState(initialFormData)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState({ type: '', message: '' })
+
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value })
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setSubmitStatus({ type: '', message: '' })
+
+    try {
+      let result = membershipSubmitMode === 'api'
+        ? await submitInterestToBackend(formData)
+        : await submitInterestToFormSubmit(formData)
+
+      if (membershipSubmitMode === 'api' && !result.ok && (result.status === 404 || result.status >= 500)) {
+        result = await submitInterestToFormSubmit(formData)
+      }
+
+      if (result.ok) {
+        setSubmitStatus({ type: 'success', message: successMessage })
+        setFormData({ ...initialFormData })
+      } else {
+        setSubmitStatus({ type: 'error', message: result.message })
+      }
+    } catch {
+      if (membershipSubmitMode === 'api') {
+        try {
+          const fallbackResult = await submitInterestToFormSubmit(formData)
+
+          if (fallbackResult.ok) {
+            setSubmitStatus({ type: 'success', message: successMessage })
+            setFormData({ ...initialFormData })
+          } else {
+            setSubmitStatus({ type: 'error', message: fallbackResult.message })
+          }
+        } catch {
+          setSubmitStatus({ type: 'error', message: 'Connection error. Please try again later.' })
+        }
+      } else {
+        setSubmitStatus({ type: 'error', message: 'Connection error. Please try again later.' })
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -131,46 +259,103 @@ export default function Membership() {
               </div>
               <p className="text-slate-500 mb-12 font-medium">Fill out the form below. Our membership committee reviews applications on a rolling basis.</p>
               
-              <form className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+              {submitStatus.message && (
+                <div className={`mb-8 p-6 rounded-2xl font-bold uppercase tracking-widest text-sm ${
+                  submitStatus.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}>
+                  {submitStatus.message}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Full Name</label>
-                  <input type="text" placeholder="John Doe" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="John Doe" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Email Address</label>
-                  <input type="email" placeholder="john@example.com" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    type="email" required placeholder="john@example.com" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Phone Number</label>
-                  <input type="tel" placeholder="+91 00000 00000" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    type="tel" required placeholder="+91 00000 00000" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Address</label>
-                  <input type="text" placeholder="Street Address" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="Street Address" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">State</label>
-                  <input type="text" placeholder="Tamil Nadu" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="state"
+                    value={formData.state}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="Tamil Nadu" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">District</label>
-                  <input type="text" placeholder="Madurai" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="city" // Using city for district in this context
+                    value={formData.city}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="Madurai" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">City</label>
-                  <input type="text" placeholder="Madurai City" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="cityLocal"
+                    value={formData.cityLocal}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="Madurai City" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Pincode</label>
-                  <input type="text" placeholder="625016" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="pincode"
+                    value={formData.pincode}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="625016" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-black uppercase tracking-[0.2em] text-[#00153D]/60 mb-3">Profession / Specialization</label>
-                  <input type="text" placeholder="Entrepreneur / Architect / Business Owner" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" />
+                  <input 
+                    name="profession"
+                    value={formData.profession}
+                    onChange={handleInputChange}
+                    type="text" required placeholder="Entrepreneur / Architect / Business Owner" className="w-full bg-white border border-slate-200 rounded-xl py-4 px-6 focus:ring-2 focus:ring-[#A0813D]/20 focus:border-[#A0813D] transition-all outline-none font-semibold text-slate-700 placeholder:text-slate-300" 
+                  />
                 </div>
                 <div className="md:col-span-2 pt-4">
-                  <button className="bg-[#00153D] hover:bg-[#8B6D31] text-white px-10 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3 w-full sm:w-auto shadow-[0_15px_30px_-10px_rgba(0,21,61,0.3)] hover:shadow-[0_15px_30px_-10px_rgba(160,129,61,0.3)] border border-white/10 active:scale-95">
-                    Submit Application <CheckCircle2 size={16} />
+                  <button 
+                    type="submit"
+                    disabled={submitting}
+                    className="bg-[#00153D] hover:bg-[#8B6D31] text-white px-10 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3 w-full sm:w-auto shadow-[0_15px_30px_-10px_rgba(0,21,61,0.3)] hover:shadow-[0_15px_30px_-10px_rgba(160,129,61,0.3)] border border-white/10 active:scale-95 disabled:opacity-50"
+                  >
+                    {submitting ? 'Sending...' : 'Submit Application'} <CheckCircle2 size={16} />
                   </button>
                 </div>
               </form>

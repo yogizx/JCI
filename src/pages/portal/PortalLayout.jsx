@@ -4,7 +4,7 @@ import {
   LayoutDashboard, User, Calendar, FolderHeart, Library,
   Settings, HelpCircle, Search, Bell, Menu, X, LogOut,
   ChevronDown, Users, BookOpen, CreditCard, Trophy,
-  CheckCircle2, AlertCircle, Info, Megaphone
+  CheckCircle2, AlertCircle, Info, Megaphone, ShieldCheck
 } from 'lucide-react'
 
 const navLinks = [
@@ -62,6 +62,8 @@ export default function PortalLayout() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const [member, setMember] = useState(null)
+  const [authChecking, setAuthChecking] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -71,6 +73,62 @@ export default function PortalLayout() {
   const userMenuRef = useRef(null)
 
   const unreadCount = notifications.filter(n => !n.read).length
+
+  useEffect(() => {
+    const clearSession = () => {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+    }
+
+    const fetchMember = async () => {
+      const token = localStorage.getItem('token')
+
+      if (!token) {
+        clearSession()
+        navigate('/login', { replace: true })
+        return
+      }
+
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+
+      try {
+        const response = await fetch('/api/member/profile', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          signal: controller.signal,
+        })
+        const data = await response.json()
+
+        if (response.ok) {
+          setMember(data.member)
+          localStorage.setItem('user', JSON.stringify(data.member))
+        } else if (response.status === 401) {
+          // Only redirect on actual authentication failure
+          clearSession()
+          navigate('/login', { replace: true })
+        } else {
+          // For other errors (500, etc.), use the cached user data if available
+          const cachedUser = localStorage.getItem('user')
+          if (cachedUser) setMember(JSON.parse(cachedUser))
+          console.warn('Backend error, using cached session:', response.status)
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.error('Network or fetch error:', err)
+          // Don't log out on network glitches if we have a token
+          const cachedUser = localStorage.getItem('user')
+          if (cachedUser) setMember(JSON.parse(cachedUser))
+        }
+      } finally {
+        window.clearTimeout(timeoutId)
+        setAuthChecking(false)
+      }
+    }
+
+    fetchMember()
+  }, [navigate])
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -89,7 +147,12 @@ export default function PortalLayout() {
 
   const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   const markRead = (id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-  const handleLogout = () => { setUserMenuOpen(false); navigate('/login') }
+  const handleLogout = () => { 
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    setUserMenuOpen(false)
+    navigate('/login', { replace: true })
+  }
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full overflow-hidden">
@@ -101,18 +164,21 @@ export default function PortalLayout() {
         {/* Member Info (Image Style) */}
         <div className="mb-10 flex flex-col items-center">
           <div className="relative mb-4">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-700 shadow-2xl">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-700 shadow-2xl bg-white">
               <img 
-                src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200" 
-                alt="Karthik Raja"
+                src={member?.profile?.profileImage || "https://img.freepik.com/premium-vector/avatar-man-short-hair-dark-skin_113065-517.jpg"} 
+                alt={member?.name || "Member"}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#00153D]"></div>
           </div>
           <div className="text-center">
-            <h3 className="text-lg font-bold text-white leading-tight">Karthik Raja</h3>
-            <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest opacity-80">Membership ID: S1S1049281</p>
+            <h3 className="text-lg font-bold text-white leading-tight">{member?.name || "Loading..."}</h3>
+            <p className="text-[10px] text-slate-400 mt-2 uppercase tracking-widest font-black flex flex-col gap-1 items-center">
+              <span>MEMBERSHIP ID:</span> 
+              <span className="text-[#A0813D] text-xs tracking-wider bg-white/10 px-3 py-1 rounded-md">{member?.memberId || "---"}</span>
+            </p>
           </div>
         </div>
 
@@ -163,6 +229,22 @@ export default function PortalLayout() {
       </div>
     </div>
   )
+
+  if (authChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4 text-slate-900">
+        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white px-8 py-10 text-center shadow-[0_24px_60px_rgba(0,21,61,0.08)]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#00153D] text-[#A0813D]">
+            <ShieldCheck size={24} />
+          </div>
+          <h1 className="mt-4 text-2xl font-black text-[#00153D]">Verifying your access</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-500">
+            We&apos;re checking your member session before loading the portal.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex bg-[#F8FAFC] min-h-screen font-jakarta text-slate-900">
@@ -306,11 +388,11 @@ export default function PortalLayout() {
                 className="flex items-center gap-2 hover:bg-slate-50 px-2 py-1.5 rounded-xl transition-all"
               >
                 <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full bg-gradient-to-br from-[#A0813D] to-[#8B6D31] flex items-center justify-center border-2 border-white shadow-sm text-white text-xs font-bold shrink-0">
-                  KR
+                  {member?.name ? member.name.substring(0, 2).toUpperCase() : "U"}
                 </div>
                 <div className="hidden sm:block text-left">
-                  <p className="text-xs lg:text-sm font-bold text-slate-700 leading-none">Karthik Raja</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Member</p>
+                  <p className="text-xs lg:text-sm font-bold text-slate-700 leading-none">{member?.name || "Loading..."}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{member?.role || "Member"}</p>
                 </div>
                 <ChevronDown size={14} className={`text-slate-400 hidden sm:block transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -347,7 +429,31 @@ export default function PortalLayout() {
 
         {/* ── PAGE CONTENT ── */}
         <div className="flex-1 p-4 lg:p-10 mt-2 lg:mt-4">
-          <Outlet />
+          {member?.isTempPassword && (
+            <div className="mb-6 rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                    <AlertCircle size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Temporary Password</p>
+                    <p className="mt-1 text-sm leading-relaxed text-amber-800">
+                      Your account is still using the temporary password sent by the admin. Change it now to secure your portal access.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/portal/profile?changePassword=1')}
+                  className="rounded-2xl bg-amber-600 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-amber-700"
+                >
+                  Change Password
+                </button>
+              </div>
+            </div>
+          )}
+
+          <Outlet context={{ member }} />
         </div>
       </main>
     </div>

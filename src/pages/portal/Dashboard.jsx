@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Calendar, Rocket, ShieldCheck, ChevronRight, Activity, ArrowUpRight, Megaphone, MapPin, Headset } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { AlertCircle, Calendar, CheckCircle, Rocket, ShieldCheck, ChevronRight, Activity, ArrowUpRight, Megaphone, MapPin, Headset, Info } from 'lucide-react'
+import { Link, useOutletContext } from 'react-router-dom'
 
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const monthValues = [40, 55, 70, 85, 60, 75, 50, 90, 65, 80, 45, 70]
@@ -16,20 +16,165 @@ const verticalBreakdown = {
   'Junior Jaycee': 1,
 }
 
+const FALLBACK_DASHBOARD_EVENTS = [
+  {
+    id: null,
+    title: 'Regional Leadership Summit',
+    image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=2070&auto=format&fit=crop',
+    month: 'Oct',
+    day: '15',
+    category: 'Flagship',
+    time: '10:00 AM',
+    venue: 'JCI HQ',
+  },
+  {
+    id: null,
+    title: 'Impact Networking Night',
+    image: 'https://images.unsplash.com/photo-1515169067868-5387ec356754?q=80&w=2070&auto=format&fit=crop',
+    month: 'Oct',
+    day: '22',
+    category: 'Networking',
+    time: '06:30 PM',
+    venue: 'Grand Plaza',
+  },
+]
+
+function getEventDateParts(dateValue) {
+  const eventDate = dateValue ? new Date(dateValue) : null
+  if (!eventDate || Number.isNaN(eventDate.getTime())) {
+    return { month: 'TBD', day: '--' }
+  }
+
+  return {
+    month: eventDate.toLocaleString('en-US', { month: 'short' }),
+    day: String(eventDate.getDate()).padStart(2, '0'),
+  }
+}
+
+function mapDashboardEvent(event) {
+  const dateParts = getEventDateParts(event.date)
+  return {
+    id: event._id,
+    title: event.eventName || 'Untitled Event',
+    image: event.banner || 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=2070&auto=format&fit=crop',
+    month: dateParts.month,
+    day: dateParts.day,
+    category: event.vertical || 'Event',
+    time: event.time || 'TBD',
+    venue: event.venue || 'TBD',
+  }
+}
+
 export default function Dashboard() {
+  const { member } = useOutletContext();
   const [hoveredMonth, setHoveredMonth] = useState(null)
+  const [welcomeMessage, setWelcomeMessage] = useState("Loading your updates...");
+  const [bannerImage, setBannerImage] = useState("https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2070&auto=format&fit=crop");
+  const [publicEvents, setPublicEvents] = useState([]);
+  const [monthlyContent, setMonthlyContent] = useState('');
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthReport = member?.monthlyReports?.find(r => r.month === currentMonthKey);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        
+        // Fetch Welcome Message
+        const welcomeRes = await fetch('/api/settings/dashboard_welcome_message', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (welcomeRes.ok) {
+          const data = await welcomeRes.json();
+          setWelcomeMessage(data.value);
+        }
+
+        // Fetch Banner Image
+        const bannerRes = await fetch('/api/settings/dashboard_banner_image', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (bannerRes.ok) {
+          const data = await bannerRes.json();
+          setBannerImage(data.value);
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  useEffect(() => {
+    const fetchPublicEvents = async () => {
+      try {
+        const token = localStorage.getItem('token')
+        const res = await fetch('/api/events', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        setPublicEvents(Array.isArray(data.events) ? data.events : [])
+      } catch (err) {
+        console.error('Error fetching public events:', err)
+      }
+    }
+
+    fetchPublicEvents()
+  }, [])
+
+  const handleMonthlySubmit = async (e) => {
+    e.preventDefault();
+    if (!monthlyContent.trim()) return;
+    
+    setSubmitLoading(true);
+    setSubmitError('');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/member/monthly-reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: monthlyContent })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setSuccessMessage('Monthly report submitted successfully! Refreshing...');
+        setMonthlyContent('');
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setSubmitError(data.message || 'Failed to submit report');
+      }
+    } catch (err) {
+      setSubmitError('Connection error');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  const dashboardEvents = publicEvents.length
+    ? publicEvents.slice(0, 2).map(mapDashboardEvent)
+    : FALLBACK_DASHBOARD_EVENTS;
 
   return (
     <div className="max-w-[1200px] mx-auto pb-12">
       <div className="bg-[#00153D] rounded-[2.5rem] p-10 mb-10 relative overflow-hidden group shadow-2xl">
         <div className="absolute inset-0 bg-gradient-to-r from-[#00153D] via-[#00153D]/80 to-transparent z-10"></div>
         <div className="absolute top-0 right-0 w-1/2 h-full z-0 opacity-40 group-hover:scale-110 transition-transform duration-1000">
-           <img src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2070&auto=format&fit=crop" className="w-full h-full object-cover" alt="Banner" />
+           <img src={bannerImage} className="w-full h-full object-cover" alt="Banner" />
         </div>
         <div className="relative z-20 max-w-lg">
-           <h1 className="text-4xl font-black text-white mb-4 tracking-tight leading-tight">Welcome back, <br/><span className="text-[#A0813D]">Jc. Karthik Raja</span></h1>
+           <h1 className="text-4xl font-black text-white mb-4 tracking-tight leading-tight">Welcome back, <br/><span className="text-[#A0813D]">{member?.name || "Member"}</span></h1>
            <p className="text-slate-300 text-sm font-medium leading-relaxed mb-8">
-             You have 2 flagship events and 1 community project scheduled for this week. Your current participation score is in the top 5 percentile.
+             {welcomeMessage}
            </p>
            <div className="flex gap-4">
               <button className="bg-[#A0813D] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#8B6D31] transition-all shadow-lg hover:-translate-y-0.5"
@@ -63,8 +208,8 @@ export default function Dashboard() {
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-gradient-to-br from-[#A0813D]/5 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
               <Calendar strokeWidth={2.5} size={20} className="text-[#8B7355] mb-5 group-hover:scale-110 transition-transform duration-300" />
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 group-hover:text-[#00153D] transition-colors">Events</p>
-              <div className="text-[34px] font-black text-[#00153D] mb-auto tracking-tight relative z-10">24</div>
-              <p className="text-[11px] text-[#A0813D] font-semibold mt-1 relative z-10">Total Events Attended</p>
+              <div className="text-[34px] font-black text-[#00153D] mb-auto tracking-tight relative z-10">{publicEvents.length}</div>
+              <p className="text-[11px] text-[#A0813D] font-semibold mt-1 relative z-10">Public Events Available</p>
             </div>
 
             {/* Projects */}
@@ -84,10 +229,12 @@ export default function Dashboard() {
               <ShieldCheck strokeWidth={2.5} size={20} className="text-[#A0813D] mb-5 group-hover:scale-110 transition-transform duration-300" />
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2 group-hover:text-[#00153D] transition-colors">Role</p>
               <div className="flex flex-col gap-0 mb-auto relative z-10">
-                 <div className="text-[22px] leading-tight font-black text-[#00153D]">LOM</div>
-                 <div className="text-[22px] leading-tight font-black text-[#00153D]">Member</div>
+                 <div className="text-[22px] leading-tight font-black text-[#00153D]">{member?.membershipCategory || 'Category'}</div>
+                 <div className="text-[22px] leading-tight font-black text-[#00153D]">{member?.role || 'Member'}</div>
               </div>
-              <p className="text-[11px] text-[#A0813D] font-semibold mt-4 w-4/5 leading-snug relative z-10">Member since Jan 2024</p>
+              <p className="text-[11px] text-[#A0813D] font-semibold mt-4 w-4/5 leading-snug relative z-10">
+                 Member since {member?.joinDate ? new Date(member.joinDate).getFullYear() : '2024'}
+              </p>
             </div>
           </div>
 
@@ -100,39 +247,24 @@ export default function Dashboard() {
               >Explore All <ChevronRight size={14} /></button>
             </div>
             <div className="grid grid-cols-2 gap-6">
-              <Link to="/portal/events" className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 flex flex-col h-full group hover:shadow-md transition-shadow cursor-pointer">
-                <div className="relative rounded-2xl overflow-hidden h-40 mb-5 bg-[#00153D]">
-                  <img src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=2070&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition-transform duration-700"/>
-                  <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md rounded-xl text-center px-3 py-1.5 shadow-md border border-white/50">
-                    <p className="text-[10px] font-black text-[#A0813D] uppercase tracking-wider">Oct</p>
-                    <p className="text-xl font-black text-[#00153D] leading-none mt-0.5">15</p>
+              {dashboardEvents.map((event) => (
+                <Link key={event.id || event.title} to={event.id ? `/portal/events/${event.id}` : '/portal/events'} className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 flex flex-col h-full group hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="relative rounded-2xl overflow-hidden h-40 mb-5 bg-[#00153D]">
+                    <img src={event.image} className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition-transform duration-700" alt={event.title} />
+                    <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md rounded-xl text-center px-3 py-1.5 shadow-md border border-white/50">
+                      <p className="text-[10px] font-black text-[#A0813D] uppercase tracking-wider">{event.month}</p>
+                      <p className="text-xl font-black text-[#00153D] leading-none mt-0.5">{event.day}</p>
+                    </div>
+                    <div className="absolute bottom-4 left-4"><span className="bg-white/10 backdrop-blur-md border border-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">{event.category}</span></div>
                   </div>
-                  <div className="absolute bottom-4 left-4"><span className="bg-white/10 backdrop-blur-md border border-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">Flagship</span></div>
-                </div>
-                <h3 className="text-lg font-bold text-[#00153D] px-2 leading-tight mb-4 group-hover:text-[#A0813D] transition-colors">Regional<br/>Leadership Summit</h3>
-                <div className="flex justify-between px-2 text-[11px] text-slate-500 font-bold mb-6 tracking-wide">
-                  <span className="flex items-center gap-1.5"><Calendar size={12} className="text-[#A0813D]"/> 10:00 AM</span>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap"><MapPin size={12} className="text-[#A0813D]"/> JCI HQ</span>
-                </div>
-                <button className="mt-auto w-full border border-slate-200 text-[#00153D] py-3.5 rounded-xl font-bold text-sm hover:bg-[#F5F2EA] hover:border-[#A0813D]/30 transition-colors">Secure Spot</button>
-              </Link>
-
-              <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 flex flex-col h-full group hover:shadow-md transition-shadow cursor-default">
-                <div className="relative rounded-2xl overflow-hidden h-40 mb-5 bg-blue-900">
-                  <img src="https://images.unsplash.com/photo-1515169067868-5387ec356754?q=80&w=2070&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-60 group-hover:scale-105 transition-transform duration-700"/>
-                  <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md rounded-xl text-center px-3 py-1.5 shadow-md border border-white/50">
-                    <p className="text-[10px] font-black text-[#A0813D] uppercase tracking-wider">Oct</p>
-                    <p className="text-xl font-black text-[#00153D] leading-none mt-0.5">22</p>
+                  <h3 className="text-lg font-bold text-[#00153D] px-2 leading-tight mb-4 group-hover:text-[#A0813D] transition-colors">{event.title}</h3>
+                  <div className="flex justify-between px-2 text-[11px] text-slate-500 font-bold mb-6 tracking-wide">
+                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-[#A0813D]"/> {event.time}</span>
+                    <span className="flex items-center gap-1.5 whitespace-nowrap"><MapPin size={12} className="text-[#A0813D]"/> {event.venue}</span>
                   </div>
-                  <div className="absolute bottom-4 left-4"><span className="bg-white/10 backdrop-blur-md border border-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">Networking</span></div>
-                </div>
-                <h3 className="text-lg font-bold text-[#00153D] px-2 leading-tight mb-4 group-hover:text-[#A0813D] transition-colors">Impact Networking<br/>Night</h3>
-                <div className="flex justify-between px-2 text-[11px] text-slate-500 font-bold mb-6 tracking-wide">
-                  <span className="flex items-center gap-1.5"><Calendar size={12} className="text-[#A0813D]"/> 06:30 PM</span>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap"><MapPin size={12} className="text-[#A0813D]"/> Grand Plaza</span>
-                </div>
-                <button className="mt-auto w-full border border-slate-200 text-[#00153D] py-3.5 rounded-xl font-bold text-sm hover:bg-[#F5F2EA] hover:border-[#A0813D]/30 transition-colors">Secure Spot</button>
-              </div>
+                  <button className="mt-auto w-full border border-slate-200 text-[#00153D] py-3.5 rounded-xl font-bold text-sm hover:bg-[#F5F2EA] hover:border-[#A0813D]/30 transition-colors">Secure Spot</button>
+                </Link>
+              ))}
             </div>
           </div>
 
@@ -183,6 +315,76 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Monthly Section — READ ONLY ONCE SUBMITTED */}
+          <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 flex flex-col cursor-default">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-[#00153D] text-[15px]">Monthly Progress Report</h3>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                {now.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+
+            {currentMonthReport ? (
+              <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 relative group overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <ShieldCheck size={40} className="text-[#A0813D]" />
+                </div>
+                <p className="text-[10px] font-black text-[#A0813D] uppercase tracking-widest mb-3 flex items-center gap-2">
+                   <CheckCircle size={12} /> Data Locked & Verified
+                </p>
+                <div className="text-slate-700 text-sm leading-relaxed font-medium whitespace-pre-wrap">
+                  {currentMonthReport.content}
+                </div>
+                <div className="mt-6 pt-4 border-t border-slate-200/60 flex justify-between items-center text-[10px] font-bold text-slate-400 italic">
+                  <span>Submitted on: {new Date(currentMonthReport.submittedAt).toLocaleDateString()}</span>
+                  <span className="text-[#A0813D] uppercase tracking-tighter">Read Only Mode</span>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleMonthlySubmit} className="space-y-4">
+                <div className="relative">
+                  <textarea
+                    value={monthlyContent}
+                    onChange={(e) => setMonthlyContent(e.target.value)}
+                    placeholder="Enter your progress, achievements, or goals for this month... (Once submitted, this cannot be edited)"
+                    className="w-full min-h-[140px] bg-white border border-slate-200 rounded-2xl p-5 text-sm focus:outline-none focus:ring-4 focus:ring-[#A0813D]/10 focus:border-[#A0813D] transition-all resize-none placeholder:text-slate-300 font-medium"
+                  />
+                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                    <span className={`text-[10px] font-bold ${monthlyContent.length > 500 ? 'text-amber-500' : 'text-slate-300'}`}>
+                      {monthlyContent.length} chars
+                    </span>
+                  </div>
+                </div>
+
+                {submitError && (
+                  <div className="flex items-center gap-2 text-red-500 text-[11px] font-bold bg-red-50 p-3 rounded-xl border border-red-100 animate-shake">
+                    <AlertCircle size={14} /> {submitError}
+                  </div>
+                )}
+
+                {successMessage && (
+                  <div className="flex items-center gap-2 text-emerald-600 text-[11px] font-bold bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                    <CheckCircle size={14} /> {successMessage}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-4 pt-2">
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Info size={14} />
+                    <span className="text-[10px] font-medium leading-tight">Data will be visible to administrators for performance audit.</span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submitLoading || !monthlyContent.trim()}
+                    className="bg-[#00153D] text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#001a4d] transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:translate-y-0 shrink-0"
+                  >
+                    {submitLoading ? 'Submitting...' : 'Lock & Submit'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Leadership Growth — now below Event Index */}

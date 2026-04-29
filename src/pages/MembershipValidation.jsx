@@ -1,6 +1,43 @@
-import { Search, Building, User, Mail, HelpCircle, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { Search, Building, User, Mail, HelpCircle, ShieldCheck, ChevronDown, Globe } from 'lucide-react'
 
 export default function MembershipValidation() {
+  const [zone, setZone] = useState('Choose Zone')
+  const [loName, setLoName] = useState('Select Organization')
+  const [memberId, setMemberId] = useState('')
+  const [status, setStatus] = useState({ type: '', message: '' })
+  const [loading, setLoading] = useState(false)
+
+  const handleValidation = async () => {
+    if (zone === 'Choose Zone' || loName === 'Select Organization' || !memberId) {
+      setStatus({ type: 'error', message: 'Please fill in all criteria' })
+      return
+    }
+
+    setLoading(true)
+    setStatus({ type: '', message: '' })
+
+    try {
+      const response = await fetch('/api/auth/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, zone, loName }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setStatus({ type: 'success', message: `Confirmed: ${data.member.name} (${data.member.role})` })
+      } else {
+        setStatus({ type: 'error', message: data.message || 'Member not found' })
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: 'Verification service unavailable' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen pt-20 bg-[#F8F9FA] flex flex-col items-center">
       {/* Background decoration */}
@@ -32,7 +69,11 @@ export default function MembershipValidation() {
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                     <Globe size={18} />
                   </div>
-                  <select className="w-full bg-[#F8F9FA] border-none rounded-xl py-4 pl-12 pr-6 appearance-none text-slate-600 font-medium focus:ring-2 focus:ring-[#A0813D]/20 transition-all">
+                  <select 
+                    value={zone}
+                    onChange={(e) => setZone(e.target.value)}
+                    className="w-full bg-[#F8F9FA] border-none rounded-xl py-4 pl-12 pr-6 appearance-none text-slate-600 font-medium focus:ring-2 focus:ring-[#A0813D]/20 transition-all"
+                  >
                     <option>Choose Zone</option>
                     <option>Zone XVIII</option>
                     <option>Zone XIX</option>
@@ -49,7 +90,11 @@ export default function MembershipValidation() {
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                     <Building size={18} />
                   </div>
-                  <select className="w-full bg-[#F8F9FA] border-none rounded-xl py-4 pl-12 pr-6 appearance-none text-slate-600 font-medium focus:ring-2 focus:ring-[#A0813D]/20 transition-all">
+                  <select 
+                    value={loName}
+                    onChange={(e) => setLoName(e.target.value)}
+                    className="w-full bg-[#F8F9FA] border-none rounded-xl py-4 pl-12 pr-6 appearance-none text-slate-600 font-medium focus:ring-2 focus:ring-[#A0813D]/20 transition-all"
+                  >
                     <option>Select Organization</option>
                     <option>JCI Madurai Central</option>
                     <option>JCI Madurai City</option>
@@ -69,14 +114,28 @@ export default function MembershipValidation() {
                 </div>
                 <input 
                   type="text" 
+                  value={memberId}
+                  onChange={(e) => setMemberId(e.target.value)}
                   placeholder="e.g., JCI-MC-XXXXX" 
                   className="w-full bg-[#F8F9FA] border-none rounded-xl py-4 pl-12 pr-6 text-slate-600 font-medium focus:ring-2 focus:ring-[#A0813D]/20 transition-all"
                 />
               </div>
             </div>
+
+            {status.message && (
+              <div className={`p-4 rounded-xl text-center text-sm font-bold uppercase tracking-wider ${
+                status.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {status.message}
+              </div>
+            )}
             
-            <button className="w-full bg-[#8B6D31] hover:bg-[#725928] text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-[#8B6D31]/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
-              Validate Membership <ShieldCheck size={20} />
+            <button 
+              onClick={handleValidation}
+              disabled={loading}
+              className="w-full bg-[#8B6D31] hover:bg-[#725928] text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-[#8B6D31]/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {loading ? 'Verifying...' : 'Validate Membership'} <ShieldCheck size={20} />
             </button>
           </div>
         </div>
@@ -101,5 +160,4 @@ export default function MembershipValidation() {
   )
 }
 
-// Missing icons from lucide
-import { ChevronDown, Globe } from 'lucide-react'
+

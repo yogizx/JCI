@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import saran from "./assets/my-avatar.jpg";
 import logo from "./assets/JCI Madurai Central.png";
+import qrImage from "./assets/membership-qr.png";
 
 import {
   Lock,
   Mail,
-  Grid2X2,
+  Grid2x2,
   ArrowRight,
   BarChart3,
   Bell,
@@ -44,7 +45,64 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
+  Trash2,
+  Camera,
+  Edit3,
+  Plus,
+  Eye,
+  EyeOff,
+  ClipboardCheck,
 } from "lucide-react";
+
+const ADMIN_ALLOWED_ROLES = ["Admin", "SuperAdmin"];
+const MEMBER_SEGMENT_OPTIONS = ["Business", "Salaried", "Student"];
+const MEMBER_FILTER_TAGS = [
+  "All",
+  ...MEMBER_SEGMENT_OPTIONS,
+  "Member",
+  "Appointee",
+  "Coordinator",
+  "Director",
+  "Vice President",
+  "Secretary",
+  "Treasurer",
+  "President",
+];
+const SEGMENT_GRADIENTS = {
+  Business: "from-[#4e3ae9] via-[#6a42f5] to-[#8b5cf6]",
+  Salaried: "from-[#06b6d4] via-[#3b82f6] to-[#7c3aed]",
+  Student: "from-[#f59e0b] via-[#f97316] to-[#ef4444]",
+};
+const SEGMENT_CLASSIFICATION_META = {
+  Business: {
+    bar: "bg-[#06B6D4]",
+    iconWrap: "bg-[#ecfeff] text-[#06B6D4]",
+    icon: <CreditCard className="h-4 w-4" />,
+  },
+  Salaried: {
+    bar: "bg-[#10B981]",
+    iconWrap: "bg-[#ecfdf5] text-[#10B981]",
+    icon: <Briefcase className="h-4 w-4" />,
+  },
+  Student: {
+    bar: "bg-[#F59E0B]",
+    iconWrap: "bg-[#fff7ed] text-[#F59E0B]",
+    icon: <User className="h-4 w-4" />,
+  },
+};
+
+const isAdminRole = (role) => ADMIN_ALLOWED_ROLES.includes(role);
+const buildEmptySegmentCounts = () =>
+  MEMBER_SEGMENT_OPTIONS.reduce((accumulator, segment) => {
+    accumulator[segment] = 0;
+    return accumulator;
+  }, {});
+const buildSegmentStats = (counts = {}) =>
+  MEMBER_SEGMENT_OPTIONS.map((name) => ({
+    name,
+    value: counts[name] || 0,
+    color: SEGMENT_GRADIENTS[name] || SEGMENT_GRADIENTS.Business,
+  }));
 
 const activityData = [
   {
@@ -253,9 +311,36 @@ function getMissingProfileFields(profile) {
   return missing;
 }
 
-function LoginPage({ onLogin, onGoogleLogin }) {
-  const [email, setEmail] = useState("admin@jci.com");
-  const [password, setPassword] = useState("123456");
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSignIn = async () => {
+    if (!username || !password) { setError("Username and password are required."); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Login failed"); return; }
+      if (!isAdminRole(data.member.role)) {
+        clearAdminSessionStorage();
+        setError("Access denied. Admin accounts only."); return;
+      }
+      localStorage.setItem("adminToken", data.token);
+      localStorage.setItem("adminUser", JSON.stringify(data.member));
+      onLogin(data.member);
+    } catch (e) {
+      setError("Connection error. Is the server running?");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -287,20 +372,25 @@ function LoginPage({ onLogin, onGoogleLogin }) {
             Please sign in to access the JCI Madurai Central management dashboard.
           </p>
 
+          {error && (
+            <div className="mt-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm font-medium text-red-600">{error}</div>
+          )}
+
           <div className="mt-8 space-y-6 sm:mt-10">
             <div>
               <label className="mb-3 block text-[13px] font-semibold text-[#7c8191]">
-                Email Address
+                Username
               </label>
 
               <div className="flex h-[54px] items-center gap-3 rounded-[14px] border border-[#ebedf4] bg-white px-4 shadow-sm transition focus-within:border-[#cec6ff] focus-within:ring-4 focus-within:ring-[#ece9ff] sm:h-[58px]">
-                <Mail className="h-5 w-5 text-[#a8acb8]" />
+                <User className="h-5 w-5 text-[#a8acb8]" />
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
                   className="w-full bg-transparent text-[14px] text-[#4d5364] outline-none placeholder:text-[#b5b9c6] sm:text-[15px]"
-                  placeholder="admin@jcimaduraicentral.com"
+                  placeholder="admin"
                 />
               </div>
             </div>
@@ -324,6 +414,7 @@ function LoginPage({ onLogin, onGoogleLogin }) {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
                   className="w-full bg-transparent text-[14px] text-[#4d5364] outline-none placeholder:text-[#b5b9c6] sm:text-[15px]"
                   placeholder="Enter password"
                 />
@@ -340,35 +431,18 @@ function LoginPage({ onLogin, onGoogleLogin }) {
           </label>
 
           <button
-            onClick={onLogin}
-            className="mt-6 flex h-[54px] w-full items-center justify-center rounded-full bg-gradient-to-r from-[#5b3df5] to-[#6c40f6] text-[14px] font-semibold text-white shadow-[0_18px_30px_rgba(91,61,245,0.30)] transition hover:-translate-y-0.5 sm:mt-7 sm:h-[58px] sm:text-[15px]"
+            onClick={handleSignIn}
+            disabled={loading}
+            className="mt-6 flex h-[54px] w-full items-center justify-center rounded-full bg-gradient-to-r from-[#5b3df5] to-[#6c40f6] text-[14px] font-semibold text-white shadow-[0_18px_30px_rgba(91,61,245,0.30)] transition hover:-translate-y-0.5 disabled:opacity-60 sm:mt-7 sm:h-[58px] sm:text-[15px]"
           >
-            Sign in to Portal
+            {loading ? "Signing in..." : "Sign in to Portal"}
           </button>
 
           <div className="my-6 flex items-center gap-4 text-[13px] text-[#b0b4c0] sm:my-8">
             <div className="h-px flex-1 bg-[#eceef4]" />
-            <span>Or access with</span>
+            <span>Authorized personnel only</span>
             <div className="h-px flex-1 bg-[#eceef4]" />
           </div>
-
-          <button
-            type="button"
-            onClick={onGoogleLogin}
-            className="flex h-[52px] w-full items-center justify-center gap-3 rounded-[16px] border border-[#e3e7f0] bg-white text-[13px] font-semibold text-[#2b2f3a] shadow-sm transition hover:border-[#cfd6e6] hover:bg-[#fafbff] sm:h-[56px] sm:text-[14px]"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 48 48"
-              className="h-5 w-5"
-            >
-              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/>
-              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.2 18.9 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z"/>
-              <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.5-5.2l-6.2-5.2c-2.1 1.6-4.6 2.4-7.3 2.4-5.2 0-9.6-3.3-11.2-8l-6.5 5C9.6 39.6 16.3 44 24 44z"/>
-              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.3 5.5-6 7.1l.1-.1 6.2 5.2C35.2 40.5 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/>
-            </svg>
-            Google Workspace
-          </button>
         </section>
       </div>
     </div>
@@ -592,6 +666,280 @@ const initialMembers = [
   },
 ];
 
+const ADMIN_TOKEN_STORAGE_KEY = "adminToken";
+const ADMIN_USER_STORAGE_KEY = "adminUser";
+const ADMIN_MEMBER_AVATAR =
+  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80";
+
+function clearAdminSessionStorage() {
+  localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(ADMIN_USER_STORAGE_KEY);
+  localStorage.removeItem("members_cache");
+}
+
+function getAdminUser() {
+  try {
+    return JSON.parse(localStorage.getItem(ADMIN_USER_STORAGE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function getAdminHeaders() {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""}`,
+  };
+}
+
+async function fetchAuthenticatedAdmin() {
+  const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+
+  if (!token) {
+    return { ok: false, message: "Admin session not found." };
+  }
+
+  try {
+    const response = await fetch("/api/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !isAdminRole(data.member?.role)) {
+      return {
+        ok: false,
+        message: data.message || "Access denied. Admin accounts only.",
+      };
+    }
+
+    return { ok: true, member: data.member };
+  } catch (error) {
+    return {
+      ok: false,
+      message: "Unable to validate the admin session right now.",
+    };
+  }
+}
+
+function buildChildrenPayload(form) {
+  const children = [];
+  const totalChildren = Number.parseInt(form.childrenCount || "0", 10);
+
+  for (let index = 1; index <= totalChildren; index += 1) {
+    const child = {
+      name: form[`child${index}Name`]?.trim() || "",
+      dob: form[`child${index}Dob`] || "",
+      bloodGroup: form[`child${index}BloodGroup`] || "",
+      gender: form[`child${index}Gender`] || "",
+    };
+
+    if (child.name || child.dob || child.bloodGroup || child.gender) {
+      children.push(child);
+    }
+  }
+
+  return children;
+}
+
+function cleanPhone(val) {
+  // Strip all whitespace to avoid regex edge cases, then re-validate
+  return (val || "").trim().replace(/\s+/g, " ");
+}
+
+function buildMemberCreatePayload(form, businessGallery) {
+  const isBusinessProfile = form.businessProfile === "Business";
+  const isStudentProfile = form.businessProfile === "Student";
+  const primaryBusinessName = isBusinessProfile ? form.businessName : (isStudentProfile ? form.institute : form.companyName);
+  const primaryRole = isBusinessProfile ? form.businessDesignation : (isStudentProfile ? form.department : form.salariedDesignation);
+  const primaryEmail = isBusinessProfile ? form.businessEmail : form.officialEmail;
+  const primaryAddress = isBusinessProfile ? form.businessAddress : form.companyAddress;
+  const primaryPhone = cleanPhone(isBusinessProfile ? form.businessPhone : form.phone);
+  const children = buildChildrenPayload(form);
+
+  return {
+    name: form.name.trim(),
+    email: form.email.trim(),
+    phone: cleanPhone(form.phone),
+    gender: form.gender || "",
+    membershipCategory: form.tagValue || "Member",
+    memberContribution: form.role || "",
+    memberSegment: form.businessProfile || "",
+    profession: primaryRole?.trim() || primaryBusinessName?.trim() || "",
+    address: primaryAddress?.trim() || "",
+    profile: {
+      dob: form.dob || "",
+      bloodGroup: form.bloodGroup || "",
+      phone: cleanPhone(form.phone),
+      email: form.email.trim(),
+      profession: primaryRole?.trim() || "",
+      businessRole: primaryRole?.trim() || "",
+      profileImage: form.profileImage || "",
+      business: {
+        name: primaryBusinessName?.trim() || "",
+        address: primaryAddress?.trim() || "",
+        email: primaryEmail?.trim() || "",
+        contactNo: primaryPhone?.trim() || "",
+        website: form.businessWebsite?.trim() || "",
+        mapLocation: "",
+        visitingCardImage: form.visitingCardImage || form.businessCardImage || "",
+        portfolioImages: businessGallery || [],
+        institute: isStudentProfile ? form.institute?.trim() : "",
+        department: isStudentProfile ? form.department?.trim() : "",
+        year: isStudentProfile ? form.year?.trim() : "",
+        idNumber: isStudentProfile ? form.idNumber?.trim() : "",
+      },
+      social: {
+        website: form.businessWebsite?.trim() || "",
+        linkedin: form.linkedin?.trim() || "",
+        instagram: form.instagram?.trim() || "",
+        facebook: form.facebook?.trim() || "",
+        youtube: form.youtube?.trim() || "",
+      },
+      family: {
+        maritalStatus: form.maritalStatus || "Single",
+        anniversary: form.anniversary || "",
+        spouse:
+          form.maritalStatus === "Married"
+            ? {
+                name: form.spouseName?.trim() || "",
+                dob: form.spouseDob || "",
+                bloodGroup: form.spouseBloodGroup || "",
+              }
+            : {},
+        children,
+      },
+    },
+  };
+}
+
+function mapApiMemberToUi(member) {
+  if (!member) return null;
+
+  const profile = member.profile || {};
+  const business = profile.business || {};
+  const family = profile.family || {};
+  const socialLinks = profile.socialLinks || profile.social || {};
+  const tags = [member.membershipCategory, member.memberSegment].filter(Boolean);
+
+  return {
+    ...member,
+    id: member.id || member._id,
+    systemRole: member.role,
+    role: member.membershipCategory || member.memberContribution || member.role,
+    avatar: profile.profileImage || ADMIN_MEMBER_AVATAR,
+    dot: member.isTempPassword ? "bg-amber-500" : "bg-emerald-500",
+    tags,
+    about: profile.about || member.about || "",
+    profile: {
+      ...profile,
+      memberId: member.memberId,
+      phone: profile.phone || member.phone || "",
+      email: profile.email || member.email || "",
+      address: profile.address || member.address || "",
+      city: profile.city || member.city || "",
+      state: profile.state || member.state || "",
+      pincode: profile.pincode || member.pincode || "",
+      profession: profile.profession || member.profession || "",
+      businessRole: profile.businessRole || member.memberContribution || "",
+      businessName: business.name || "",
+      business: {
+        ...business,
+        name: business.name || "",
+        address: business.address || "",
+        email: business.email || "",
+        contactNo: business.contactNo || "",
+        mapLocation: business.mapLocation || "",
+        visitingCardImage: business.visitingCardImage || "",
+        institute: business.institute || "",
+        department: business.department || "",
+        year: business.year || "",
+        idNumber: business.idNumber || "",
+      },
+      family: {
+        maritalStatus: family.maritalStatus || "Single",
+        anniversary: family.anniversary || "",
+        spouse: family.spouse || {},
+        children: family.children || [],
+      },
+      socialLinks: {
+        website: socialLinks.website || "",
+        linkedin: socialLinks.linkedin || "",
+        instagram: socialLinks.instagram || "",
+        facebook: socialLinks.facebook || "",
+        youtube: socialLinks.youtube || "",
+        pinterest: socialLinks.pinterest || socialLinks.twitter || "",
+      },
+      businessGallery: profile.businessGallery || business.portfolioImages || [],
+    },
+  };
+}
+
+function buildMemberUpdatePayload(member) {
+  const tags = member.tags || [];
+  const segment =
+    member.memberSegment ||
+    MEMBER_SEGMENT_OPTIONS.find((item) => tags.includes(item)) ||
+    "";
+
+  return {
+    name: member.name || "",
+    email: member.profile?.email || member.email || "",
+    phone: member.profile?.phone || member.phone || "",
+    address: member.profile?.address || member.address || "",
+    city: member.profile?.city || member.city || "",
+    state: member.profile?.state || member.state || "",
+    pincode: member.profile?.pincode || member.pincode || "",
+    profession: member.profile?.profession || member.profession || "",
+    membershipCategory: member.membershipCategory || member.role || "",
+    memberContribution: member.memberContribution || member.profile?.businessRole || "",
+    memberSegment: segment,
+    profile: {
+      about: member.about || member.profile?.about || "",
+      dob: member.profile?.dob || "",
+      bloodGroup: member.profile?.bloodGroup || "",
+      phone: member.profile?.phone || member.phone || "",
+      email: member.profile?.email || member.email || "",
+      address: member.profile?.address || member.address || "",
+      city: member.profile?.city || member.city || "",
+      state: member.profile?.state || member.state || "",
+      pincode: member.profile?.pincode || member.pincode || "",
+      profession: member.profile?.profession || member.profession || "",
+      businessRole: member.profile?.businessRole || member.memberContribution || "",
+      profileImage: member.profile?.profileImage || member.avatar || "",
+      business: {
+        name: member.profile?.business?.name || member.profile?.businessName || "",
+        address: member.profile?.business?.address || "",
+        email: member.profile?.business?.email || "",
+        contactNo: member.profile?.business?.contactNo || "",
+        mapLocation: member.profile?.business?.mapLocation || "",
+        visitingCardImage: member.profile?.business?.visitingCardImage || "",
+        portfolioImages: member.profile?.businessGallery || [],
+        institute: member.profile?.business?.institute || "",
+        department: member.profile?.business?.department || "",
+        year: member.profile?.business?.year || "",
+        idNumber: member.profile?.business?.idNumber || "",
+      },
+      social: {
+        website: member.profile?.socialLinks?.website || "",
+        linkedin: member.profile?.socialLinks?.linkedin || "",
+        instagram: member.profile?.socialLinks?.instagram || "",
+        facebook: member.profile?.socialLinks?.facebook || "",
+        youtube: member.profile?.socialLinks?.youtube || "",
+        pinterest: member.profile?.socialLinks?.pinterest || "",
+      },
+      family: {
+        maritalStatus: member.profile?.family?.maritalStatus || "Single",
+        anniversary: member.profile?.family?.anniversary || "",
+        spouse: member.profile?.family?.spouse || {},
+        children: member.profile?.family?.children || [],
+      },
+    },
+  };
+}
+
 function MemberCard({ member, onViewProfile, onDelete }) {
   return (
     <div className="rounded-[22px] bg-white px-4 py-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:px-5 sm:py-6">
@@ -616,6 +964,12 @@ function MemberCard({ member, onViewProfile, onDelete }) {
       </h3>
 
       <p className="mt-2 text-center text-[12px] text-[#6e76a0] sm:text-[13px] font-medium text-emerald-600 uppercase tracking-widest">{member.role}</p>
+
+      {member.memberId && (
+        <p className="mt-1 text-center text-[10px] font-bold text-[#8f96a4] sm:text-[11px] uppercase tracking-widest">
+          {member.memberId}
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap justify-center gap-2 sm:mt-4">
         {(member.tags || []).map((tag) => (
@@ -653,11 +1007,34 @@ function MemberCard({ member, onViewProfile, onDelete }) {
 
 function AddMemberModal({ onClose, onAdd }) {
   const TAG_TYPE_OPTIONS = ["Category", "Segment"];
-  const CATEGORY_OPTIONS = ["LGB", "Members", "Appointee", "JAC", "Past President"];
-  const SEGMENT_OPTIONS = ["Business", "Salaried"];
-  const ROLE_OPTIONS = ["President", "Secretary", "Treasurer", "Member", "Coordinator"];
+  const CATEGORY_OPTIONS = [ "Member",
+  "Appointee",
+  "Coordinator",
+  "Director",
+  "Vice President",
+  "Secretary",
+  "Treasurer",
+  "President",];
+  const SEGMENT_OPTIONS = MEMBER_SEGMENT_OPTIONS;
+ const ROLE_OPTIONS = [
+  "HGF - Henry Giessenbier Fellow",
+  "JFM - Jaycee Foundation Member",
+  "JFD - Jaycee Foundation Donor",
+  "JFA - Jaycee Foundation Achiever",
+  "JFP - Jaycee Foundation Patron",
+  "JFF - Jaycee Foundation Fellow",
+  "JFS - Jaycee Foundation Star",
+  "JFG - Jaycee Foundation Gem",
+  "RPP - Rajendranath Pai Patron",
+  "JFR - Jaycee Foundation Ruby",
+  "JFJ - Jaycee Foundation Jewel",
+  "JFE - Jaycee Foundation Emerald",
+  "JFK - Jaycee Foundation Kohinoor",
+  "JFI - Jaycee Foundation Icon",
+  "JFC - Jaycee Foundation Crown",
+];
   const BLOOD_GROUP_OPTIONS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-  const BUSINESS_PROFILE_OPTIONS = ["Business", "Salaried"];
+  const BUSINESS_PROFILE_OPTIONS = ["Business", "Salaried", "Student"];
   const TRAINER_OPTIONS = ["Zone Trainer", "National Trainer", "Author", "Others", "NA"];
   const MARITAL_STATUS_OPTIONS = ["Single", "Married"];
   const CHILD_GENDER_OPTIONS = ["M", "F"];
@@ -706,14 +1083,18 @@ function AddMemberModal({ onClose, onAdd }) {
     youtube: "",
     linkedin: "",
     gender: "",
-    otherSocialName: "",
-    otherSocialLink: "",
+    institute: "",
+    department: "",
+    year: "",
+    idNumber: "",
+   otherSocials: [{ name: "", link: "" }],
   });
 
   const today = new Date().toISOString().split("T")[0];
 
   const [businessGallery, setBusinessGallery] = useState([]);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const inputClass = (hasError = false) =>
     `w-full rounded-2xl border px-3 py-2.5 text-[13px] outline-none transition sm:px-4 sm:py-3 sm:text-[14px] ${
@@ -732,6 +1113,34 @@ function AddMemberModal({ onClose, onAdd }) {
     const { name, value } = e.target;
     setField(name, value);
   };
+
+
+  const handleOtherSocialChange = (index, field, value) => {
+  setForm((prev) => ({
+    ...prev,
+    otherSocials: prev.otherSocials.map((item, i) =>
+      i === index ? { ...item, [field]: value } : item
+    ),
+  }));
+};
+
+const addOtherSocialField = () => {
+  setForm((prev) => ({
+    ...prev,
+    otherSocials: [...prev.otherSocials, { name: "", link: "" }],
+  }));
+};
+
+const removeOtherSocialField = (index) => {
+  setForm((prev) => ({
+    ...prev,
+    otherSocials:
+      prev.otherSocials.length === 1
+        ? [{ name: "", link: "" }]
+        : prev.otherSocials.filter((_, i) => i !== index),
+  }));
+};
+
 
   const fileToBase64Local = (file) =>
     new Promise((resolve, reject) => {
@@ -790,61 +1199,9 @@ function AddMemberModal({ onClose, onAdd }) {
     }
   };
 
-  const validateStep = () => {
-    const nextErrors = {};
-
-    if (step === 1) {
-      if (!form.name.trim()) nextErrors.name = true;
-      if (!form.role.trim()) nextErrors.role = true;
-      if (!form.dob) nextErrors.dob = true;
-      if (!form.phone.trim()) nextErrors.phone = true;
-      if (!form.email.trim()) nextErrors.email = true;
-      if (!form.bloodGroup) nextErrors.bloodGroup = true;
-      if (!form.businessProfile) nextErrors.businessProfile = true;
-      if (!form.tagValue) nextErrors.tagValue = true;
-      if (!form.gender) nextErrors.gender = true;
-    }
-
-    if (step === 2 && form.maritalStatus === "Married") {
-      if (!form.spouseName.trim()) nextErrors.spouseName = true;
-      if (!form.spouseDob) nextErrors.spouseDob = true;
-      if (!form.spouseBloodGroup) nextErrors.spouseBloodGroup = true;
-      if (!form.anniversary) nextErrors.anniversary = true;
-
-      if (form.childrenCount === "1" || form.childrenCount === "2") {
-        if (!form.child1Name.trim()) nextErrors.child1Name = true;
-        if (!form.child1Dob) nextErrors.child1Dob = true;
-        if (!form.child1BloodGroup) nextErrors.child1BloodGroup = true;
-        if (!form.child1Gender) nextErrors.child1Gender = true;
-      }
-
-      if (form.childrenCount === "2") {
-        if (!form.child2Name.trim()) nextErrors.child2Name = true;
-        if (!form.child2Dob) nextErrors.child2Dob = true;
-        if (!form.child2BloodGroup) nextErrors.child2BloodGroup = true;
-        if (!form.child2Gender) nextErrors.child2Gender = true;
-      }
-    }
-
-    if (step === 3) {
-      if (form.businessProfile === "Business") {
-        if (!form.businessName.trim()) nextErrors.businessName = true;
-        if (!form.businessDesignation.trim()) nextErrors.businessDesignation = true;
-        if (!form.businessEmail.trim()) nextErrors.businessEmail = true;
-        if (!form.businessAddress.trim()) nextErrors.businessAddress = true;
-        if (!form.businessPhone.trim()) nextErrors.businessPhone = true;
-      }
-
-      if (form.businessProfile === "Salaried") {
-        if (!form.companyName.trim()) nextErrors.companyName = true;
-        if (!form.salariedDesignation.trim()) nextErrors.salariedDesignation = true;
-        if (!form.companyAddress.trim()) nextErrors.companyAddress = true;
-      }
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
+ const validateStep = () => {
+  return true;
+};
 
   const goNext = () => {
     if (!validateStep()) return;
@@ -855,95 +1212,39 @@ function AddMemberModal({ onClose, onAdd }) {
     setStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const handleSubmit = () => {
-    setStep(4);
-    const finalErrors = {};
-
-    if (!form.name.trim()) finalErrors.name = true;
-    if (!form.role.trim()) finalErrors.role = true;
-    if (!form.phone.trim()) finalErrors.phone = true;
-    if (!form.email.trim()) finalErrors.email = true;
-    if (!form.businessProfile) finalErrors.businessProfile = true;
-
-    setErrors(finalErrors);
-    if (Object.keys(finalErrors).length) return;
-
-    const fallbackAvatar =
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80";
-
-    const finalProfileImage = form.profileImage || fallbackAvatar;
-
-    const children = [];
-
-    if (form.maritalStatus === "Married") {
-      if (form.childrenCount === "1" || form.childrenCount === "2") {
-        children.push({
-          name: form.child1Name,
-          dob: form.child1Dob,
-          bloodGroup: form.child1BloodGroup,
-          gender: form.child1Gender,
-        });
-      }
-
-      if (form.childrenCount === "2") {
-        children.push({
-          name: form.child2Name,
-          dob: form.child2Dob,
-          bloodGroup: form.child2BloodGroup,
-          gender: form.child2Gender,
-        });
-      }
+  const handleSubmit = async () => {
+    // Basic validation for mandatory fields
+    if (!form.name || !form.phone || !form.email || !form.role || !form.tagValue) {
+      alert("Please fill in Name, Phone, Email, JCI - Contribution, and Membership Categories.");
+      return;
     }
 
-    const newMember = {
-      name: form.name.trim(),
-      role: form.role.trim(),
-      avatar: finalProfileImage,
-      dot: "bg-emerald-500",
-      tags: [form.tagValue].filter(Boolean),
-      about: "New member added to the directory.",
-      profile: {
-        profileImage: finalProfileImage,
-        memberId: "",
-        businessName: form.businessProfile === "Business" ? form.businessName.trim() : form.companyName.trim(),
-        businessRole: form.businessProfile === "Business" ? form.businessDesignation.trim() : form.salariedDesignation.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        dob: form.dob,
-        bloodGroup: form.bloodGroup,
-        business: {
-          type: form.businessProfile,
-          name: form.businessProfile === "Business" ? form.businessName.trim() : form.companyName.trim(),
-          contactNo: form.businessProfile === "Business" ? form.businessPhone.trim() : "",
-          address: form.businessProfile === "Business" ? form.businessAddress.trim() : form.companyAddress.trim(),
-          email: form.businessProfile === "Business" ? form.businessEmail.trim() : form.officialEmail.trim(),
-          website: form.businessProfile === "Business" ? form.businessWebsite.trim() : "",
-          visitingCardImage: form.businessProfile === "Salaried" ? form.visitingCardImage : form.businessCardImage,
-        },
-        family: {
-          maritalStatus: form.maritalStatus,
-          spouse: form.maritalStatus === "Married" ? {
-            name: form.spouseName.trim(),
-            dob: form.spouseDob,
-            bloodGroup: form.spouseBloodGroup,
-          } : { name: "", dob: "", bloodGroup: "" },
-          anniversary: form.maritalStatus === "Married" ? form.anniversary : "",
-          childrenCount: Number(form.childrenCount),
-          children,
-        },
-        socialLinks: {
-          facebook: form.facebook?.trim() || "",
-          instagram: form.instagram?.trim() || "",
-          youtube: form.youtube?.trim() || "",
-          linkedin: form.linkedin?.trim() || "",
-          pinterest: form.otherSocialLink?.trim() || "",
-        },
-        businessGallery,
-      },
-    };
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/admin/members/create', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify(buildMemberCreatePayload(form, businessGallery)),
+      });
 
-    onAdd(newMember);
-    onClose();
+      const data = await response.json();
+
+      if (response.ok) {
+        const createdMember = mapApiMemberToUi(data.member);
+        alert(
+          `Member created successfully.\nUsername: ${data.credentials?.username || createdMember?.memberId}\nCredential email: ${data.credentials?.emailSent ? "Sent" : "Pending"}`
+        );
+        onAdd(createdMember);
+        onClose();
+      } else {
+        alert(data.message || "Failed to create member");
+      }
+    } catch (err) {
+      console.error("Error creating member:", err);
+      alert("Connection error. Please check if the backend is running.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderUploadBox = (title, subtitle, onChange, preview) => (
@@ -993,7 +1294,7 @@ function AddMemberModal({ onClose, onAdd }) {
         </div>
 
         <div className="mt-4 grid grid-cols-4 gap-2 sm:mt-6 sm:gap-3">
-          {["Personal Profile", "Family", "Business Profile", "Social Profile"].map((label, index) => {
+          {["Personal Profile", "Family Profile", "Business Profile", "Social Profile"].map((label, index) => {
             const item = index + 1;
 
             return (
@@ -1013,8 +1314,6 @@ function AddMemberModal({ onClose, onAdd }) {
 
         {step === 1 && (
           <div className="mt-6 sm:mt-8">
-            <h3 className="text-[1.1rem] font-bold text-[#1f2430] sm:text-[1.25rem]">Personal Profile</h3>
-
             <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2">
               <div>
                 <label className={labelClass}>1. Name</label>
@@ -1035,7 +1334,7 @@ function AddMemberModal({ onClose, onAdd }) {
                   onChange={handleChange}
                   className={inputClass(errors.role)}
                 >
-                  <option value="">Select Role</option>
+                  <option value="">Select Contribution</option>
                   {ROLE_OPTIONS.map((item) => (
                     <option key={item} value={item}>{item}</option>
                   ))}
@@ -1098,7 +1397,7 @@ function AddMemberModal({ onClose, onAdd }) {
                   value={form.email}
                   onChange={handleChange}
                   className={inputClass(errors.email)}
-                  placeholder="Enter email"
+                  placeholder="Enter Email"
                 />
               </div>
 
@@ -1152,7 +1451,7 @@ function AddMemberModal({ onClose, onAdd }) {
               </div>
 
               <div className="md:col-span-2">
-                <label className={labelClass}>11. Trainership Details (If applicable)</label>
+                <label className={labelClass}>11. Trainership Details </label>
                 <select
                   name="trainerDetails"
                   value={form.trainerDetails}
@@ -1171,7 +1470,7 @@ function AddMemberModal({ onClose, onAdd }) {
 
         {step === 2 && (
           <div className="mt-6 sm:mt-8">
-            <h3 className="text-[1.1rem] font-bold text-[#1f2430] sm:text-[1.25rem]">Family</h3>
+            <h3 className="text-[1.1rem] font-bold text-[#1f2430] sm:text-[1.25rem]">Family Profile</h3>
 
             <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2">
               <div className="md:col-span-2">
@@ -1378,7 +1677,6 @@ function AddMemberModal({ onClose, onAdd }) {
 
         {step === 3 && (
           <div className="mt-6 sm:mt-8">
-            <h3 className="text-[1.1rem] font-bold text-[#1f2430] sm:text-[1.25rem]">Business Profile</h3>
 
             <div className="mt-4 sm:mt-6">
               {form.businessProfile === "Business" && (
@@ -1518,7 +1816,56 @@ function AddMemberModal({ onClose, onAdd }) {
                       className={inputClass(errors.companyAddress)}
                     />
                   </div>
+                </div>
+              )}
 
+              {form.businessProfile === "Student" && (
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>1. Institute</label>
+                    <input
+                      name="institute"
+                      value={form.institute}
+                      onChange={handleChange}
+                      className={inputClass(errors.institute)}
+                      placeholder="e.g. Madurai Medical College"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>2. Department</label>
+                    <input
+                      name="department"
+                      value={form.department}
+                      onChange={handleChange}
+                      className={inputClass(errors.department)}
+                      placeholder="e.g. Cardiology"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>3. Year</label>
+                    <input
+                      name="year"
+                      value={form.year}
+                      onChange={handleChange}
+                      className={inputClass(errors.year)}
+                      placeholder="e.g. 3rd Year"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>4. ID Number</label>
+                    <input
+                      name="idNumber"
+                      value={form.idNumber}
+                      onChange={handleChange}
+                      className={inputClass(errors.idNumber)}
+                      placeholder="Enter Student ID"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(form.businessProfile === "Business" || form.businessProfile === "Salaried") && (
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-2 mt-5">
                   <div>
                     <label className={labelClass}>4. Official Email (Optional)</label>
                     <input
@@ -1543,7 +1890,7 @@ function AddMemberModal({ onClose, onAdd }) {
 
               {!form.businessProfile && (
                 <div className="rounded-2xl bg-[#f7f8fc] px-3 py-3 text-[13px] text-[#6b7280] sm:px-4 sm:py-4 sm:text-[14px]">
-                  First choose “Business Profile” in Section 1.
+                  First choose "Business Profile" in Section 1.
                 </div>
               )}
             </div>
@@ -1552,8 +1899,6 @@ function AddMemberModal({ onClose, onAdd }) {
 
         {step === 4 && (
           <div className="mt-6 sm:mt-8">
-            <h3 className="text-[1.1rem] font-bold text-[#1f2430] sm:text-[1.25rem]">Social Profile</h3>
-
             <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2">
               <div>
                 <label className={labelClass}>1. Facebook</label>
@@ -1599,27 +1944,58 @@ function AddMemberModal({ onClose, onAdd }) {
                 />
               </div>
 
-              <div>
-                <label className={labelClass}>5. Others - Name</label>
-                <input
-                  name="otherSocialName"
-                  value={form.otherSocialName}
-                  onChange={handleChange}
-                  className={inputClass()}
-                  placeholder="Eg: Twitter"
-                />
-              </div>
+             <div className="md:col-span-2">
+  <div className="mb-3 flex items-center justify-between">
+    <label className={labelClass}>5. Other Social Links</label>
+    <button
+      type="button"
+      onClick={addOtherSocialField}
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5b3df5] text-white shadow-[0_10px_20px_rgba(91,61,245,0.25)]"
+    >
+      +
+    </button>
+  </div>
 
-              <div>
-                <label className={labelClass}>Others - Link</label>
-                <input
-                  name="otherSocialLink"
-                  value={form.otherSocialLink}
-                  onChange={handleChange}
-                  className={inputClass()}
-                  placeholder="Paste URL"
-                />
-              </div>
+  <div className="space-y-3">
+    {form.otherSocials.map((item, index) => (
+      <div
+        key={index}
+        className="grid gap-3 rounded-2xl border border-[#e8ebf2] bg-[#fafbff] p-3 md:grid-cols-[1fr_1fr_auto]"
+      >
+        <input
+          type="text"
+          value={item.name}
+          onChange={(e) =>
+            handleOtherSocialChange(index, "name", e.target.value)
+          }
+          className={inputClass()}
+          placeholder="Eg: Twitter"
+        />
+
+        <input
+          type="text"
+          value={item.link}
+          onChange={(e) =>
+            handleOtherSocialChange(index, "link", e.target.value)
+          }
+          className={inputClass()}
+          placeholder="Paste URL"
+        />
+
+        <button
+          type="button"
+          onClick={() => removeOtherSocialField(index)}
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[13px] font-semibold text-red-600 hover:bg-red-100"
+        >
+          Remove
+        </button>
+      </div>
+    ))}
+  </div>
+</div>
+
+
+
             </div>
           </div>
         )}
@@ -1651,9 +2027,10 @@ function AddMemberModal({ onClose, onAdd }) {
               <button
                 type="button"
                 onClick={handleSubmit}
-                className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-5 py-2 text-[13px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)] sm:px-6 sm:py-3 sm:text-[14px]"
+                disabled={submitting}
+                className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-5 py-2 text-[13px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)] disabled:opacity-60 sm:px-6 sm:py-3 sm:text-[14px]"
               >
-                Save Member
+                {submitting ? "Saving..." : "Save Member"}
               </button>
             )}
           </div>
@@ -1854,12 +2231,12 @@ function MemberProfileModal({ member, onClose, onSave }) {
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">Member ID</p>
                 {isEditing ? (
                   <input
-                    value={draft.profile?.memberId || ""}
-                    onChange={(e) => updateDraft("profile.memberId", e.target.value)}
-                    className="mt-1 w-full rounded-2xl border border-[#e8ebf2] px-2 py-1.5 text-[13px] outline-none focus:border-[#5b3df5] sm:px-3 sm:py-2 sm:text-[15px]"
+                    value={draft.memberId || draft.profile?.memberId || ""}
+                    readOnly
+                    className="mt-1 w-full rounded-2xl border border-[#e8ebf2] bg-slate-50 px-2 py-1.5 text-[13px] outline-none sm:px-3 sm:py-2 sm:text-[15px]"
                   />
                 ) : (
-                  <p className="mt-1 text-[13px] text-[#4f5666] sm:text-[15px]">{renderValue(draft.profile?.memberId)}</p>
+                  <p className="mt-1 text-[13px] text-[#4f5666] sm:text-[15px]">{renderValue(draft.memberId || draft.profile?.memberId)}</p>
                 )}
               </div>
             </div>
@@ -2376,6 +2753,59 @@ function MemberProfileModal({ member, onClose, onSave }) {
                 </div>
               )}
             </div>
+
+            {/* Monthly Progress Reports — ADMIN READ ONLY */}
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-7">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f2efff] text-[#5b3df5]">
+                    <ClipboardCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[1.25rem] font-bold tracking-[-0.04em] text-[#1f2430]">Monthly Progress Reports</h3>
+                    <p className="text-[12px] text-[#8b93a3]">Historical monthly data submitted by the member</p>
+                  </div>
+                </div>
+              </div>
+
+              {(draft.monthlyReports && draft.monthlyReports.length > 0) ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {[...draft.monthlyReports].reverse().map((report, idx) => {
+                    const [year, month] = report.month.split('-');
+                    const dateObj = new Date(year, month - 1);
+                    return (
+                      <div key={idx} className="group relative overflow-hidden rounded-[24px] border border-[#f0f2f5] bg-[#fbfcfe] p-5 transition hover:border-[#5b3df5]/30 hover:bg-white hover:shadow-md">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3.5 w-3.5 text-[#5b3df5]" />
+                            <span className="text-[13px] font-bold text-[#1f2430]">
+                              {dateObj.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                            </span>
+                          </div>
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 ring-1 ring-emerald-100">
+                            Verified
+                          </span>
+                        </div>
+                        <div className="text-[13px] leading-relaxed text-[#4f5666] whitespace-pre-wrap">
+                          {report.content}
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-[#f0f2f5] text-[10px] font-medium text-[#9ca3af] italic">
+                          Submitted on: {new Date(report.submittedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-[24px] bg-[#f8f9fb] py-12 text-center ring-1 ring-[#f0f2f5]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-[#d1d5db] shadow-sm mb-3">
+                    <ClipboardCheck className="h-6 w-6" />
+                  </div>
+                  <p className="text-[14px] font-medium text-[#6b7280]">No monthly reports submitted yet.</p>
+                  <p className="mt-1 text-[12px] text-[#9ca3af]">Monthly data will appear here once the member submits it.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -2383,38 +2813,171 @@ function MemberProfileModal({ member, onClose, onSave }) {
   );
 }
 
+function AdminHeader({ adminUser }) {
+  const name = adminUser?.name || "Admin";
+  const avatar = adminUser?.avatar;
+  const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+  
+  return (
+    <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
+      {avatar && avatar !== ADMIN_MEMBER_AVATAR ? (
+        <img src={avatar} alt={name} className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10" />
+      ) : (
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5b3df5] text-white text-xs font-bold sm:h-10 sm:w-10">
+          {initials}
+        </div>
+      )}
+      <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">{name}</span>
+    </div>
+  );
+}
+
+let membersPageCache = null;
+let membersPageCacheTime = 0;
+
 function MembersPage({
   onLogout,
   onNavigate,
   activePage,
   showSettingsPage,
   setShowSettingsPage,
+  defaultFilter,
+  adminUser,
 }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [members, setMembers] = useState(() => {
-    const savedMembers = localStorage.getItem("membersData");
-    return savedMembers ? JSON.parse(savedMembers) : initialMembers;
-  });
+  const [members, setMembers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [selectedTag, setSelectedTag] = useState("All");
-  
+  const [selectedTag, setSelectedTag] = useState(defaultFilter || "All");
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [membersError, setMembersError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [globalWelcomeMessage, setGlobalWelcomeMessage] = useState("");
+  const [globalBannerImage, setGlobalBannerImage] = useState("");
+  const [isUpdatingWelcome, setIsUpdatingWelcome] = useState(false);
+
   useEffect(() => {
-    localStorage.setItem("membersData", JSON.stringify(members));
-  }, [members]);
+    const fetchWelcome = async () => {
+      try {
+        const headers = getAdminHeaders();
+        const [welcomeRes, bannerRes] = await Promise.all([
+          fetch("/api/settings/dashboard_welcome_message", { headers }),
+          fetch("/api/settings/dashboard_banner_image", { headers })
+        ]);
+        
+        if (welcomeRes.status === 401 || welcomeRes.status === 403 || bannerRes.status === 401 || bannerRes.status === 403) {
+          clearAdminSessionStorage();
+          onLogout();
+          return;
+        }
+
+        if (welcomeRes.ok) {
+          const welcomeData = await welcomeRes.json();
+          setGlobalWelcomeMessage(welcomeData.value || "");
+        }
+        if (bannerRes.ok) {
+          const bannerData = await bannerRes.json();
+          setGlobalBannerImage(bannerData.value || "");
+        }
+      } catch (err) {
+        console.error("Failed to fetch portal settings", err);
+      }
+    };
+    fetchWelcome();
+  }, [onLogout]);
+
+  const handleUpdateWelcome = async () => {
+    setIsUpdatingWelcome(true);
+    try {
+      const headers = getAdminHeaders();
+      const [welcomeRes, bannerRes] = await Promise.all([
+        fetch("/api/admin/settings/dashboard_welcome_message", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: globalWelcomeMessage })
+        }),
+        fetch("/api/admin/settings/dashboard_banner_image", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: globalBannerImage })
+        })
+      ]);
+
+      if (welcomeRes.status === 401 || welcomeRes.status === 403 || bannerRes.status === 401 || bannerRes.status === 403) {
+        clearAdminSessionStorage();
+        onLogout();
+        return;
+      }
+
+      if (welcomeRes.ok && bannerRes.ok) {
+        alert("Portal settings updated for all members!");
+      } else {
+        alert("Failed to update some settings.");
+      }
+    } catch (err) {
+      console.error("Update error", err);
+      alert("Error updating portal settings.");
+    } finally {
+      setIsUpdatingWelcome(false);
+    }
+  };
+
+  useEffect(() => {
+    if (defaultFilter) {
+      setSelectedTag(defaultFilter);
+      setCurrentPage(1);
+    }
+  }, [defaultFilter]);
+
+  useEffect(() => {
+    const fetchMembers = async () => {
+      if (membersPageCache && Date.now() - membersPageCacheTime < 60000) {
+        setMembers(membersPageCache);
+        setMembersLoading(false);
+        return;
+      }
+      setMembersLoading(true);
+      setMembersError("");
+
+      try {
+        const response = await fetch("/api/admin/members?limit=5000", {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""}`,
+          },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setMembersError(data.message || "Failed to fetch members.");
+          if (response.status === 401 || response.status === 403) {
+            clearAdminSessionStorage();
+            onLogout();
+          }
+          return;
+        }
+
+        const uiMembers = (data.members || []).map(mapApiMemberToUi);
+        setMembers(uiMembers);
+        membersPageCache = uiMembers;
+        membersPageCacheTime = Date.now();
+      } catch (error) {
+        console.error("Error fetching members:", error);
+        setMembersError("Unable to load members right now.");
+      } finally {
+        setMembersLoading(false);
+      }
+    };
+
+    fetchMembers();
+  }, [onLogout]);
 
   const filteredMembers = useMemo(() => {
     let result = members;
-    
+
     if (selectedTag !== "All") {
-      result = result.filter((member) => {
-        const tags = member.tags || [];
-        if (selectedTag === "Past President") {
-          return tags.includes("Past President") || member.role?.toLowerCase().includes("president");
-        }
-        return tags.includes(selectedTag);
-      });
+      result = result.filter((member) => (member.tags || []).includes(selectedTag));
     }
 
     const value = searchTerm.trim().toLowerCase();
@@ -2423,11 +2986,14 @@ function MembersPage({
     return result.filter((member) => {
       const text = [
         member.name,
+        member.memberId,
         member.role,
+        member.memberContribution,
         member.about,
         ...(member.tags || []),
         member.profile?.businessName,
         member.profile?.businessRole,
+        member.profile?.email,
       ]
         .filter(Boolean)
         .join(" ")
@@ -2437,33 +3003,107 @@ function MembersPage({
     });
   }, [members, searchTerm, selectedTag]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedTag]);
+
+  const itemsPerPage = 19;
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / itemsPerPage));
+  const paginatedMembers = filteredMembers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   const handleAddMember = (newMember) => {
-    setMembers((prev) => [...prev, newMember]);
+    setMembers((prev) => {
+      const nextMembers = [newMember, ...prev];
+      membersPageCache = nextMembers;
+      membersPageCacheTime = Date.now();
+      return nextMembers;
+    });
   };
 
-  const handleDeleteMember = (memberToDelete) => {
+  const handleDeleteMember = async (memberToDelete) => {
     const confirmDelete = window.confirm(
       `Are you sure you want to delete ${memberToDelete.name}?`
     );
     if (!confirmDelete) return;
 
-    setMembers((prev) =>
-      prev.filter((member) => member.name !== memberToDelete.name)
-    );
+    try {
+      const response = await fetch(`/api/admin/members/${memberToDelete.id || memberToDelete._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          clearAdminSessionStorage();
+          onLogout();
+          return;
+        }
+        alert(data.message || "Failed to delete member.");
+        return;
+      }
+
+      setMembers((prev) => {
+        const nextMembers = prev.filter(
+          (member) => (member.id || member._id) !== (memberToDelete.id || memberToDelete._id)
+        );
+        membersPageCache = nextMembers;
+        membersPageCacheTime = Date.now();
+        return nextMembers;
+      });
+
+      if ((selectedMember?.id || selectedMember?._id) === (memberToDelete.id || memberToDelete._id)) {
+        setSelectedMember(null);
+      }
+    } catch (error) {
+      console.error("Error deleting member:", error);
+      alert("Unable to delete the member right now.");
+    }
   };
 
-  const handleSaveMember = (updatedMember) => {
-    setMembers((prev) =>
-      prev.map((member) =>
-        member.name === updatedMember.name ? updatedMember : member
-      )
-    );
-    setSelectedMember(updatedMember);
+  const handleSaveMember = async (updatedMember) => {
+    try {
+      const response = await fetch(`/api/admin/members/${updatedMember.id || updatedMember._id}`, {
+        method: "PUT",
+        headers: getAdminHeaders(),
+        body: JSON.stringify(buildMemberUpdatePayload(updatedMember)),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          clearAdminSessionStorage();
+          onLogout();
+          return;
+        }
+        alert(data.message || "Failed to update member.");
+        return;
+      }
+
+      const nextMember = mapApiMemberToUi(data.member);
+      setMembers((prev) => {
+        const nextMembers = prev.map((member) =>
+          (member.id || member._id) === (nextMember.id || nextMember._id) ? nextMember : member
+        );
+        membersPageCache = nextMembers;
+        membersPageCacheTime = Date.now();
+        return nextMembers;
+      });
+      setSelectedMember(nextMember);
+      alert("Member updated successfully.");
+    } catch (error) {
+      console.error("Error updating member:", error);
+      alert("Unable to update the member right now.");
+    }
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f4f5f7] text-[#1f2430]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="bg-[#f4f5f7] text-[#1f2430]">
+      <div className="flex">
         {/* Mobile menu button - moved to top-right */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -2473,7 +3113,7 @@ function MembersPage({
         </button>
 
         {/* Sidebar - responsive */}
-        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
+        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
           <div className="flex h-full flex-col">
             <div>
               <SidebarBrand />
@@ -2549,7 +3189,52 @@ function MembersPage({
         </aside>
 
         {/* Main */}
-        <main className="h-screen flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
+        <main className="relative z-10 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
+          <section className="mb-8 rounded-[22px] bg-white p-6 shadow-sm ring-1 ring-[#eceef4]">
+             <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-5 w-5 text-[#A0813D]" />
+                <h2 className="text-lg font-bold text-[#1f2430]">Member Dashboard Global Message</h2>
+             </div>
+             <p className="text-sm text-[#6f7787] mb-4">Customize the welcome banner (text and background) for ALL members on their portal dashboard.</p>
+             <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">Welcome Message</p>
+                    <textarea 
+                      className="w-full min-h-[120px] rounded-2xl border border-[#edf0f6] bg-[#f8f9fb] p-4 text-sm text-[#48505f] outline-none focus:border-[#5b3df5] transition-all"
+                      value={globalWelcomeMessage}
+                      onChange={(e) => setGlobalWelcomeMessage(e.target.value)}
+                      placeholder="Enter the welcome message for all members..."
+                    />
+                </div>
+                <div className="space-y-4">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">Banner Image URL</p>
+                    <div className="flex flex-col gap-3">
+                        <input 
+                          type="text"
+                          className="w-full rounded-full border border-[#edf0f6] bg-[#f8f9fb] px-5 py-3 text-sm text-[#48505f] outline-none focus:border-[#5b3df5] transition-all"
+                          value={globalBannerImage}
+                          onChange={(e) => setGlobalBannerImage(e.target.value)}
+                          placeholder="https://images.unsplash.com/..."
+                        />
+                        {globalBannerImage && (
+                          <div className="h-20 w-full overflow-hidden rounded-2xl border border-[#edf0f6] shadow-sm">
+                            <img src={globalBannerImage} alt="Preview" className="h-full w-full object-cover" />
+                          </div>
+                        )}
+                    </div>
+                </div>
+             </div>
+             <div className="mt-6 flex justify-end">
+                <button 
+                  onClick={handleUpdateWelcome}
+                  disabled={isUpdatingWelcome}
+                  className="rounded-full bg-gradient-to-r from-[#A0813D] to-[#8B6D31] px-8 py-3 text-[14px] font-bold text-white shadow-[0_18px_30px_rgba(160,129,61,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                >
+                  {isUpdatingWelcome ? "Saving Changes..." : "Update Portal Banner"}
+                </button>
+             </div>
+          </section>
+
           <section className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-[1.6rem] font-bold tracking-[-0.05em] leading-none text-[#1f2430] sm:text-[1.8rem] lg:text-[2.2rem]">
@@ -2577,14 +3262,7 @@ function MembersPage({
                   <Bell className="h-5 w-5" />
                   <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
                 </button>
-                <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                  <img
-                    src={saran}
-                    alt="Sarankumar R"
-                    className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                  />
-                  <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
-                </div>
+                <AdminHeader adminUser={adminUser} />
               </div>
 
               <button
@@ -2597,30 +3275,49 @@ function MembersPage({
           </section>
 
           <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 sm:gap-3">
-            {["All", "LGB", "Members", "Appointee", "JAC", "Past President", "Business", "Salaried"].map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setSelectedTag(tag)}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition sm:px-4 sm:py-2 sm:text-[12px] ${
-                  selectedTag === tag
-                    ? "bg-[#5b3df5] text-white"
-                    : "bg-white text-[#767d8b] ring-1 ring-[#eceef4]"
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
+            {MEMBER_FILTER_TAGS.map((tag) => (
+  <button
+    key={tag}
+    type="button"
+    onClick={() => setSelectedTag(tag)}
+    className={`rounded-full px-4 py-2 text-[13px] font-semibold transition ${
+      selectedTag === tag
+        ? "bg-[#5b3df5] text-white shadow-[0_12px_24px_rgba(91,61,245,0.22)]"
+        : "bg-white text-[#7b8494] ring-1 ring-[#e8ebf2] hover:text-[#1f2430]"
+    }`}
+  >
+    {tag}
+  </button>
+))}
           </div>
 
+          {membersError && (
+            <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+              {membersError}
+            </div>
+          )}
+
           <section className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {filteredMembers.map((member, index) => (
-              <MemberCard
-                key={`${member.name}-${index}`}
-                member={member}
-                onViewProfile={setSelectedMember}
-                onDelete={handleDeleteMember}
-              />
-            ))}
+            {membersLoading ? (
+              <div className="col-span-full rounded-[22px] bg-white px-6 py-10 text-center text-sm font-semibold text-[#6f7787] shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+                Loading members from the database...
+              </div>
+            ) : (
+              paginatedMembers.map((member, index) => (
+                <MemberCard
+                  key={member.id || member._id || `${member.name}-${index}`}
+                  member={member}
+                  onViewProfile={setSelectedMember}
+                  onDelete={handleDeleteMember}
+                />
+              ))
+            )}
+
+            {!membersLoading && filteredMembers.length === 0 && (
+              <div className="col-span-full rounded-[22px] bg-white px-6 py-10 text-center text-sm font-semibold text-[#6f7787] shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+                No members matched the current filters.
+              </div>
+            )}
 
             <button
               onClick={() => setShowAddModal(true)}
@@ -2637,20 +3334,21 @@ function MembersPage({
           </section>
 
           <div className="mt-8 flex items-center justify-center gap-3 text-[14px] text-[#6f7787] sm:mt-10 sm:gap-4 sm:text-[16px]">
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50">
+            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#4e3ae9] text-white shadow-md sm:h-9 sm:w-9">
-              1
-            </button>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50">
-              2
-            </button>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50">
-              3
-            </button>
-            <span className="text-[#9aa2b0]">...</span>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50">
+            
+            {Array.from({ length: totalPages }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`flex h-8 w-8 items-center justify-center rounded-full shadow-md sm:h-9 sm:w-9 ${currentPage === i + 1 ? 'bg-[#4e3ae9] text-white' : 'bg-white text-[#666f80] ring-1 ring-[#eceef4] hover:bg-gray-50'}`}
+              >
+                {i + 1}
+              </button>
+            ))}
+
+            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#666f80] shadow-sm ring-1 ring-[#eceef4] hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -2695,9 +3393,69 @@ function StatCard({ item }) {
   );
 }
 
-function GrowthChart() {
+function GrowthChart({ members = [] }) {
   const [selectedRange, setSelectedRange] = useState("this-year");
-  const currentChart = chartData[selectedRange];
+  
+  const currentChart = useMemo(() => {
+    if (!members || members.length === 0) {
+      // Return a flat real chart if no members, to show true data (0) 
+      // or we can just proceed, the logic below handles 0 members gracefully!
+    }
+
+    const now = new Date();
+    let monthsToLookBack = 12;
+    if (selectedRange === "last-2-years") monthsToLookBack = 24;
+    if (selectedRange === "last-3-years") monthsToLookBack = 36;
+
+    const monthlyCounts = {};
+    members.forEach(m => {
+      const d = m.createdAt ? new Date(m.createdAt) : new Date();
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      monthlyCounts[key] = (monthlyCounts[key] || 0) + 1;
+    });
+
+    let runningTotal = 0;
+    const windowStart = new Date(now.getFullYear(), now.getMonth() - monthsToLookBack + 1, 1);
+    members.forEach(m => {
+      const d = m.createdAt ? new Date(m.createdAt) : new Date();
+      if (d < windowStart) runningTotal++;
+    });
+
+    const rawPoints = [];
+    const generatedLabels = [];
+    
+    const labelInterval = Math.floor(monthsToLookBack / 5);
+
+    for (let i = monthsToLookBack - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      runningTotal += (monthlyCounts[key] || 0);
+      rawPoints.push(runningTotal);
+
+      if (i % labelInterval === 0 || i === 0) {
+        if (i === 0) {
+          generatedLabels.push("NOW");
+        } else {
+          generatedLabels.push(monthsToLookBack === 12 ? d.toLocaleString('en-US', { month: 'short' }).toUpperCase() : `${d.getFullYear()} ${d.toLocaleString('en-US', { month: 'short' }).toUpperCase()}`);
+        }
+      }
+    }
+
+    const maxVal = Math.max(...rawPoints, 10);
+    const points = rawPoints.map((val, i) => ({
+      x: (i / (rawPoints.length - 1)) * 100,
+      y: 100 - ((val / maxVal) * 80)
+    }));
+
+    return {
+      label: selectedRange,
+      subtitle: `Real-time member growth (${members.length} total)`,
+      points,
+      labels: generatedLabels.slice(0, 6),
+      markerIndex: points.length - 1
+    };
+  }, [members, selectedRange]);
+
   const path = useMemo(() => buildSmoothPath(currentChart.points, 1000, 260), [currentChart]);
   const markerPoint = currentChart.points[currentChart.markerIndex] || currentChart.points[0];
   const markerX = (markerPoint.x / 100) * 1000;
@@ -2789,7 +3547,32 @@ function CategoryDistribution() {
   );
 }
 
-function RecentActivity() {
+function RecentActivity({ members = [] }) {
+  const logs = React.useMemo(() => {
+    if (members && members.length > 0) {
+      const latestMembers = [...members]
+        .filter(m => m.createdAt)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 4);
+
+      return latestMembers.map((m, i) => {
+        const timeDiff = Math.floor((new Date() - new Date(m.createdAt)) / 60000);
+        let timeStr = timeDiff < 60 ? `${timeDiff} mins ago` : timeDiff < 1440 ? `${Math.floor(timeDiff/60)} hours ago` : `${Math.floor(timeDiff/1440)} days ago`;
+        if (timeDiff === 0) timeStr = "Just now";
+
+        return {
+          id: m.id || m._id || i,
+          name: m.name,
+          action: "joined the directory as " + (m.membershipCategory || "Member"),
+          time: timeStr,
+          avatar: m.profile?.avatar || "https://ui-avatars.com/api/?name=" + encodeURIComponent(m.name) + "&background=random",
+          dot: "bg-green-500"
+        };
+      });
+    }
+    return activityData;
+  }, [members]);
+
   return (
     <div className="rounded-[30px] bg-[#f3f6f9] p-4 shadow-[0_8px_24px_rgba(25,30,60,0.03)] ring-1 ring-[#edf0f5] sm:p-5 md:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-3 sm:gap-4">
@@ -2798,7 +3581,7 @@ function RecentActivity() {
       </div>
 
       <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5 md:mt-8">
-        {activityData.map((item) => (
+        {logs.map((item) => (
           <div key={item.id} className="flex items-center gap-3 sm:gap-4">
             <div className="relative">
               <img src={item.avatar} alt={item.name} className="h-10 w-10 rounded-full object-cover sm:h-12 sm:w-12" />
@@ -2828,12 +3611,73 @@ function RecentActivity() {
   );
 }
 
-function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage }) {
+function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage, adminUser }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [analytics, setAnalytics] = useState({
+    categoryStats: [],
+    segmentStats: [],
+    revenue: 0,
+    totalMembers: 0,
+    loading: true
+  });
+  const [verticalCounts, setVerticalCounts] = useState({});
 
+  useEffect(() => {
+    fetchAnalytics();
+    fetchVerticalCounts();
+  }, []);
+
+  const fetchVerticalCounts = async () => {
+    try {
+      const res = await fetch('/api/admin/events/vertical-counts', { headers: getAdminHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setVerticalCounts(data.counts || {});
+      }
+    } catch (e) { console.error('Vertical counts fetch error:', e); }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const authHeader = getAdminHeaders();
+      const res = await fetch("/api/admin/analytics-complex", { headers: authHeader });
+      const statsRes = await fetch("/api/admin/stats", { headers: authHeader });
+
+      if (
+        res.status === 401 ||
+        res.status === 403 ||
+        statsRes.status === 401 ||
+        statsRes.status === 403
+      ) {
+        clearAdminSessionStorage();
+        onLogout();
+        return;
+      }
+      
+      const data = await res.json();
+      const statsData = await statsRes.json();
+      
+      if (res.ok && statsRes.ok) {
+        setAnalytics({
+          categoryStats: data.categoryStats || [],
+          segmentStats: data.segmentStats || [],
+          engagement: data.engagement || {
+            metrics: [75, 82, 65, 45, 90], // fallback
+            participationRate: 78
+          },
+          revenue: data.revenue || 0,
+          totalMembers: statsData.totalMembers || 0,
+          loading: false
+        });
+      }
+    } catch (err) {
+      console.error("Fetch analytics error:", err);
+      setAnalytics(prev => ({ ...prev, loading: false }));
+    }
+  };
   return (
-    <div className="h-screen overflow-hidden bg-[#f4f5f7] text-[#1f2430]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#f4f5f7] text-[#1f2430]">
+      <div className="flex min-h-screen">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="fixed top-4 right-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
@@ -2841,7 +3685,7 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
           <Menu className="h-6 w-6" />
         </button>
 
-        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
+        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
           <div className="flex h-full flex-col">
             <div>
               <SidebarBrand />
@@ -2916,7 +3760,7 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
           </div>
         </aside>
 
-        <main className="h-screen flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
+        <main className="relative z-10 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-[1.8rem] font-bold tracking-[-0.05em] leading-none sm:text-[2rem] md:text-[2.2rem] lg:text-[2.5rem]">
@@ -2946,14 +3790,7 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
                   <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
                 </button>
                 
-                <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                  <img
-                    src={saran}
-                    alt="Sarankumar R"
-                    className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                  />
-                  <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
-                </div>
+                <AdminHeader adminUser={adminUser} />
               </div>
             </div>
           </div>
@@ -2966,20 +3803,17 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
                     Total Membership
                   </p>
                   <div className="mt-3 sm:mt-4 md:mt-5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a0a7b4] sm:text-[11px]">This Year</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a0a7b4] sm:text-[11px]">Active Base</p>
                     <h3 className="mt-1 text-[2.2rem] font-bold tracking-[-0.05em] text-[#141a2d] leading-none sm:mt-2 sm:text-[2.5rem] md:text-[3rem]">
-                      12,482
+                      {analytics.loading ? '...' : analytics.totalMembers.toLocaleString()}
                     </h3>
                   </div>
                   <div className="mt-3 flex items-end justify-between gap-3 sm:mt-4 sm:gap-4 md:mt-6">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a0a7b4] sm:text-[11px]">Last Year</p>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a0a7b4] sm:text-[11px]">Growth</p>
                       <p className="mt-1 text-[1.5rem] font-bold tracking-[-0.04em] text-[#1f2430] leading-none sm:mt-2 sm:text-[1.8rem] md:text-[2rem]">
-                        10,240
+                        Portal Live
                       </p>
-                    </div>
-                    <div className="inline-flex rounded-full bg-[#eef9f1] px-2 py-1 text-[10px] font-semibold text-[#39a35f] sm:px-3 sm:py-1.5 sm:text-[11px] md:text-[12px]">
-                      ↗ +21.9%
                     </div>
                   </div>
                 </div>
@@ -2993,10 +3827,10 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
               <div className="flex items-start justify-between gap-2 sm:gap-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8f96a4] sm:text-[11px] md:text-[12px]">
-                    Active Projects
+                    Active Categories
                   </p>
                   <h3 className="mt-4 text-[2.2rem] font-bold tracking-[-0.05em] text-[#141a2d] sm:mt-5 sm:text-[2.5rem] md:mt-6 md:text-[3rem]">
-                    892
+                    {analytics.loading ? '...' : analytics.categoryStats.length}
                   </h3>
                 </div>
                 <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#f1edff] text-[#5b3df5] sm:h-10 sm:w-10 md:h-11 md:w-11">
@@ -3004,7 +3838,7 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
                 </div>
               </div>
               <div className="mt-4 inline-flex rounded-full bg-[#f3edff] px-2 py-1 text-[10px] font-semibold text-[#6a42f5] sm:mt-5 sm:px-3 sm:py-1.5 sm:text-[11px] md:mt-6 md:text-[12px]">
-                ● 124 pending review
+                ● Diversity focus
               </div>
             </div>
 
@@ -3012,10 +3846,10 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
               <div className="flex items-start justify-between gap-2 sm:gap-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8f96a4] sm:text-[11px] md:text-[12px]">
-                    Direct Revenue
+                    Estimated Dues
                   </p>
                   <h3 className="mt-4 text-[2.2rem] font-bold tracking-[-0.05em] text-[#141a2d] sm:mt-5 sm:text-[2.5rem] md:mt-6 md:text-[3rem]">
-                    ₹42,800
+                    ₹{analytics.loading ? '...' : analytics.revenue.toLocaleString()}
                   </h3>
                 </div>
                 <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#f1edff] text-[#5b3df5] sm:h-10 sm:w-10 md:h-11 md:w-11">
@@ -3023,163 +3857,207 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
                 </div>
               </div>
               <div className="mt-4 inline-flex rounded-full bg-[#f3edff] px-2 py-1 text-[10px] font-semibold text-[#6a42f5] sm:mt-5 sm:px-3 sm:py-1.5 sm:text-[11px] md:mt-6 md:text-[12px]">
-                ↗ Projected 12% growth
+                ↗ Based on standard fee
               </div>
             </div>
           </section>
 
           <section className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 lg:grid-cols-2">
-            <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
+          <div className="rounded-[32px] bg-[linear-gradient(135deg,#ffffff_0%,#f7f4ff_52%,#eef4ff_100%)] p-5 shadow-[0_24px_60px_rgba(91,61,245,0.10)] ring-1 ring-[#ebe7ff] sm:p-6 md:p-7 lg:p-8">
               <div className="flex items-center justify-between">
                 <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.7rem] lg:text-[1.9rem]">
                   Categories of Members
                 </h3>
-                <button className="text-[#8f96a4] text-[16px] leading-none sm:text-[17px] md:text-[18px]">•••</button>
               </div>
-
-              <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5 md:mt-7 md:space-y-6">
-                {[
-                  { name: "LGB", value: "4,820", width: "w-[96%]", color: "bg-[#5b3df5]" },
-                  { name: "Members", value: "4,120", width: "w-[82%]", color: "bg-[#7161f5]" },
-                  { name: "Appointee", value: "3,450", width: "w-[69%]", color: "bg-[#8c7dfc]" },
-                  { name: "JAC", value: "2,910", width: "w-[58%]", color: "bg-[#a69cfe]" },
-                  { name: "Past President", value: "1,840", width: "w-[42%]", color: "bg-[#94a3b8]" },
-                ].map((item) => (
-                  <div key={item.name}>
-                    <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-[#1f2430] sm:text-[14px]">
-                      <span>{item.name}</span>
-                      <span className="text-[#a1a8b5] font-semibold">{item.value}</span>
+              <div className="mt-6 space-y-4">
+                {analytics.categoryStats.length === 0 ? (
+                  <p className="text-center text-[#8e95a3]">No data available</p>
+                ) : analytics.categoryStats.map((item) => {
+                  const perc = Math.round((item.value / analytics.totalMembers) * 100) || 0;
+                  return (
+                    <div key={item.name} className="group rounded-[24px] bg-white p-4 ring-1 ring-[#f0f2f7] transition hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${item.color}`} />
+                          <span className="text-[15px] font-bold text-[#1f2430]">{item.name}</span>
+                        </div>
+                        <span className="text-[14px] font-bold text-[#5b3df5]">{item.value}</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f1f3f7]">
+                        <div className={`h-full bg-gradient-to-r ${item.color}`} style={{ width: `${perc}%` }} />
+                      </div>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[#f1f3f7] sm:h-2.5">
-                      <div className={`h-full ${item.width} rounded-full ${item.color}`} />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
-            <div className="rounded-[28px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
+            <div className="rounded-[32px] bg-[linear-gradient(135deg,#ffffff_0%,#f7f5ff_55%,#eef4ff_100%)] p-5 shadow-[0_20px_50px_rgba(91,61,245,0.08)] ring-1 ring-[#ebe7ff] sm:p-6 md:p-7 lg:p-8">
               <div className="flex items-center justify-between">
                 <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.6rem] lg:text-[1.7rem]">
-                  Segment of Members
+                  Member Segments
                 </h3>
-                <button className="text-[#8f96a4] text-[16px] leading-none sm:text-[17px] md:text-[18px]">•••</button>
               </div>
-
-              <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-[#1f2430] sm:text-[14px]">
-                    <span>Business</span>
-                    <span className="text-[#a1a8b5] font-semibold">1,200</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[#f1f3f7] sm:h-2.5">
-                    <div className="h-full w-[62%] rounded-full bg-[#5b3df5]" />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-[#1f2430] sm:text-[14px]">
-                    <span>Salaried</span>
-                    <span className="text-[#a1a8b5] font-semibold">940</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[#f1f3f7] sm:h-2.5">
-                    <div className="h-full w-[48%] rounded-full bg-[#8c7dfc]" />
-                  </div>
-                </div>
+              <div className="mt-6 space-y-4">
+                {analytics.segmentStats.length === 0 ? (
+                  <p className="text-center text-[#8e95a3]">No data available</p>
+                ) : analytics.segmentStats.map((item) => {
+                  const perc = Math.round((item.value / analytics.totalMembers) * 100) || 0;
+                  return (
+                    <div key={item.name} className="group rounded-[24px] bg-white p-4 ring-1 ring-[#f0f2f7] transition hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${item.color}`} />
+                          <span className="text-[15px] font-bold text-[#1f2430]">{item.name}</span>
+                        </div>
+                        <span className="text-[14px] font-bold text-[#5b3df5]">{item.value}</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f1f3f7]">
+                        <div className={`h-full bg-gradient-to-r ${item.color}`} style={{ width: `${perc}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>
+
 
           <section className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 lg:grid-cols-2">
             <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.6rem] lg:text-[1.8rem]">
+                <h3 className="text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.55rem] md:text-[1.7rem] lg:text-[1.9rem]">
                     User Engagement
                   </h3>
-                  <p className="mt-1 text-[12px] text-[#98a0ae] sm:text-[13px] md:text-[14px] lg:text-[15px]">
+                 <p className="mt-1 text-[12px] text-[#7f8798] sm:text-[13px] md:text-[14px] lg:text-[15px]">
                     Multi-vector activity metrics
                   </p>
                 </div>
 
-                <div className="flex items-center rounded-full bg-[#f1f3f7] p-1 text-[10px] font-bold text-[#7a8190] sm:text-[11px] md:text-[12px]">
+              <div className="flex items-center rounded-full bg-white/80 p-1 text-[10px] font-bold text-[#7a8190] shadow-[0_8px_20px_rgba(91,61,245,0.08)] ring-1 ring-[#ece8ff] backdrop-blur sm:text-[11px] md:text-[12px]">
                   <button className="rounded-full px-3 py-1.5 transition-all hover:text-[#1f2430] sm:px-4">7D</button>
-                  <button className="rounded-full bg-white px-3 py-1.5 text-[#5b3df5] shadow-[0_2px_8px_rgba(91,61,245,0.12)] sm:px-4">
+               <button className="rounded-full bg-gradient-to-r from-[#5b3df5] to-[#6f49f6] px-3 py-1.5 text-white shadow-[0_8px_20px_rgba(91,61,245,0.24)] sm:px-4">
                     30D
                   </button>
                 </div>
               </div>
 
-              <div className="mt-5 flex justify-center sm:mt-6 md:mt-7">
-                <svg viewBox="0 0 220 220" className="h-[160px] w-[160px] sm:h-[180px] sm:w-[180px] md:h-[200px] md:w-[200px] lg:h-[210px] lg:w-[210px]">
-                  <circle cx="110" cy="110" r="76" fill="none" stroke="#eceef4" />
-                  <circle cx="110" cy="110" r="48" fill="none" stroke="#eceef4" />
-                  <polygon
-                    points="110,48 174,95 150,164 70,164 46,95"
-                    fill="rgba(91,61,245,0.14)"
-                    stroke="#4f35ec"
-                    strokeWidth="3"
-                  />
-                  <circle cx="110" cy="48" r="4" fill="#4f35ec" />
-                  <circle cx="174" cy="95" r="4" fill="#4f35ec" />
-                  <circle cx="150" cy="164" r="4" fill="#4f35ec" />
-                  <circle cx="70" cy="164" r="4" fill="#4f35ec" />
-                  <circle cx="46" cy="95" r="4" fill="#4f35ec" />
-                  <text x="95" y="22" fontSize="10" fill="#98a0ae">REVENUE</text>
-                  <text x="178" y="100" fontSize="10" fill="#98a0ae">POSTS</text>
-                  <text x="145" y="196" fontSize="10" fill="#98a0ae">REFERRALS</text>
-                  <text x="27" y="196" fontSize="10" fill="#98a0ae">UPGRADES</text>
-                  <text x="10" y="103" fontSize="10" fill="#98a0ae">LOGIN</text>
-                </svg>
-              </div>
+          <div className="mt-6 flex justify-center sm:mt-7 md:mt-8">
+  <div className="rounded-[28px] bg-white/75 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_12px_30px_rgba(91,61,245,0.08)] ring-1 ring-[#ece8ff] backdrop-blur">
+    <svg
+      viewBox="0 0 220 220"
+      className="h-[160px] w-[160px] sm:h-[180px] sm:w-[180px] md:h-[200px] md:w-[200px] lg:h-[210px] lg:w-[210px]"
+    >
+      <circle cx="110" cy="110" r="76" fill="none" stroke="#eceef4" />
+      <circle cx="110" cy="110" r="48" fill="none" stroke="#eceef4" />
+      {(() => {
+        const metrics = analytics.engagement?.metrics || [75, 82, 65, 45, 90];
+        const angles = [
+          -Math.PI / 2,
+          -Math.PI / 2 + (2 * Math.PI) / 5,
+          -Math.PI / 2 + (4 * Math.PI) / 5,
+          -Math.PI / 2 + (6 * Math.PI) / 5,
+          -Math.PI / 2 + (8 * Math.PI) / 5,
+        ];
+        const pts = metrics.map((val, i) => {
+          const r = (val / 100) * 76;
+          return `${110 + r * Math.cos(angles[i])},${110 + r * Math.sin(angles[i])}`;
+        });
+        return (
+          <>
+            <polygon
+              points={pts.join(" ")}
+              fill="rgba(91,61,245,0.14)"
+              stroke="#4f35ec"
+              strokeWidth="3"
+            />
+            {pts.map((pt, i) => {
+              const [cx, cy] = pt.split(",");
+              return <circle key={i} cx={cx} cy={cy} r="4" fill="#4f35ec" />;
+            })}
+          </>
+        );
+      })()}
+      <text x="95" y="22" fontSize="10" fill="#98a0ae">REVENUE</text>
+      <text x="178" y="100" fontSize="10" fill="#98a0ae">POSTS</text>
+      <text x="145" y="196" fontSize="10" fill="#98a0ae">REFERRALS</text>
+      <text x="27" y="196" fontSize="10" fill="#98a0ae">UPGRADES</text>
+      <text x="10" y="103" fontSize="10" fill="#98a0ae">LOGIN</text>
+    </svg>
+  </div>
+</div>
 
-              <div className="mt-4 flex items-center justify-between text-[12px] font-semibold text-[#565e6d] sm:mt-5 sm:text-[13px] md:mt-6 md:text-[14px]">
+              <div className="mt-5 flex items-end justify-between text-[12px] font-semibold text-[#565e6d] sm:mt-6 sm:text-[13px] md:mt-7 md:text-[14px]">
                 <span>Overall Participation Rate</span>
                 <span className="text-[1.5rem] font-bold tracking-[-0.04em] text-[#4f35ec] sm:text-[1.8rem] md:text-[2rem]">
-                  78%
+                  {analytics.engagement?.participationRate || 78}%
                 </span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e8ebf2] sm:mt-3 sm:h-2.5">
-                <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5]" />
-              </div>
+                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/80 ring-1 ring-[#ece8ff] sm:mt-4">
+  <div 
+    className="h-full rounded-full bg-gradient-to-r from-[#4e3ae9] via-[#6a42f5] to-[#8b5cf6] shadow-[0_6px_16px_rgba(91,61,245,0.28)] transition-all duration-1000"
+    style={{ width: `${analytics.engagement?.participationRate || 78}%` }}
+  />
+</div>
+
             </div>
 
-            <div className="rounded-[28px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
+            <div className="rounded-[32px] bg-[linear-gradient(135deg,#ffffff_0%,#f8f5ff_48%,#f2f7ff_100%)] p-5 shadow-[0_24px_60px_rgba(91,61,245,0.08)] ring-1 ring-[#ebe7ff] sm:p-6 md:p-7 lg:p-8">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.6rem] lg:text-[1.7rem]">
+               <h3 className="text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.55rem] md:text-[1.7rem] lg:text-[1.85rem]">
                   Events Vertical
                 </h3>
-                <button className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#4f35ec] sm:text-[11px] md:text-[12px]">
-                  Detailed Report →
-                </button>
+              <button
+                onClick={() => onNavigate('events', 'All')}
+                className="rounded-full bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#4f35ec] shadow-[0_8px_20px_rgba(91,61,245,0.10)] ring-1 ring-[#ece8ff] transition hover:-translate-y-0.5 sm:text-[11px] md:text-[12px]"
+              >
+                Detailed Report →
+              </button>
               </div>
 
-              <div className="mt-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-[#a1a8b5] sm:mt-5 sm:text-[11px] md:mt-6 md:text-[12px]">
+             <div className="mt-5 flex items-center justify-between rounded-[18px] bg-white/80 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#98a0ae] shadow-[0_8px_20px_rgba(25,30,60,0.04)] ring-1 ring-[#ece8ff] sm:mt-6 sm:text-[11px] md:mt-7 md:text-[12px]">
                 <span>Vertical</span>
                 <span className="text-right">Count</span>
               </div>
 
               <div className="mt-4 space-y-2 text-[13px] text-[#3c4350] sm:mt-5 sm:text-[14px] md:mt-6 md:text-[15px]">
                 {[
-                  { name: "Management", count: 48 },
-                  { name: "Training", count: 36 },
-                  { name: "Business", count: 29 },
-                  { name: "Community Development", count: 24 },
-                  { name: "Public Relationship & Marketing", count: 18 },
-                  { name: "Growth & Development", count: 16 },
-                  { name: "Internationalism", count: 12 },
-                  { name: "Junior Jaycee", count: 20 },
-                  { name: "Lady Jaycee", count: 15 }
-                ].map((vertical) => (
-                  <div 
-                    key={vertical.name}
-                    onClick={() => onNavigate("events", vertical.name)}
-                    className="grid grid-cols-[1.6fr_0.5fr] items-center rounded-xl p-2 transition-all hover:bg-[#f1edff] cursor-pointer group"
-                  >
-                    <span className="font-medium group-hover:text-[#5b3df5]">{vertical.name}</span>
-                    <span className="text-[#8b92a1] group-hover:text-[#5b3df5] font-semibold">{vertical.count}</span>
-                  </div>
-                ))}
+                  "Management",
+                  "Training",
+                  "Business",
+                  "Community Development",
+                  "Public Relationship & Marketing",
+                  "Growth & Development",
+                  "Internationalism",
+                  "Junior Jaycee",
+                  "Lady Jaycee"
+                ].map((verticalName) => {
+                  const count = verticalCounts[verticalName] || 0;
+                  const isClickable = count > 0;
+                  return (
+                    <div
+                      key={verticalName}
+                      onClick={() => isClickable && onNavigate('events', verticalName)}
+                      className={`grid grid-cols-[1.6fr_0.5fr] items-center rounded-[20px] bg-white/70 px-4 py-3 shadow-[0_8px_20px_rgba(25,30,60,0.04)] ring-1 ring-transparent transition-all group ${
+                        isClickable
+                          ? 'hover:-translate-y-0.5 hover:bg-white hover:ring-[#e9e4ff] cursor-pointer'
+                          : 'opacity-60'
+                      }`}
+                    >
+                      <span className={`font-semibold text-[#2b3140] ${isClickable ? 'group-hover:text-[#5b3df5]' : ''}`}>
+                        {verticalName}
+                      </span>
+                      <span className={`inline-flex min-w-[44px] items-center justify-center rounded-full px-3 py-1 font-bold ${
+                        isClickable
+                          ? 'bg-[#f4f0ff] text-[#5b3df5] group-hover:bg-[#ede7ff]'
+                          : 'bg-[#f5f6f8] text-[#b0b8c8]'
+                      }`}>
+                        {count}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -3237,20 +4115,334 @@ function AnalyticsPage({ onLogout, onNavigate, activePage, showSettingsPage, set
   );
 }
 
-function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+function ChangePasswordModal({ onClose }) {
+  const [passwords, setPasswords] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (passwords.newPassword !== passwords.confirmPassword) {
+      alert("New passwords do not match!");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await fetch("/api/member/password", {
+        method: "PUT",
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          currentPassword: passwords.oldPassword,
+          newPassword: passwords.newPassword
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update password");
+      
+      alert(data.message || "Password updated successfully! An email notification has been sent.");
+      onClose();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f4f5f7] text-[#1f2430]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/40">
+      <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-white p-6 shadow-[0_24px_48px_rgba(0,0,0,0.15)] ring-1 ring-[#eef1f6] sm:p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f2efff] text-[#5b3df5]">
+              <Lock className="h-5 w-5" />
+            </div>
+            <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430]">Change Password</h3>
+          </div>
+          <button onClick={onClose} className="rounded-full p-2 hover:bg-[#f4f6f9] transition">
+            <X className="h-5 w-5 text-[#697386]" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">Old Password</label>
+            <input
+              type="password"
+              required
+              value={passwords.oldPassword}
+              onChange={(e) => setPasswords({ ...passwords, oldPassword: e.target.value })}
+              className="w-full rounded-2xl border border-[#edf0f5] bg-[#f8faff] px-4 py-3.5 text-[14px] font-medium text-[#1f2430] outline-none transition focus:border-[#5b3df5] focus:ring-2 focus:ring-[#5b3df5]/10"
+              placeholder="••••••••"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">New Password</label>
+            <input
+              type="password"
+              required
+              value={passwords.newPassword}
+              onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
+              className="w-full rounded-2xl border border-[#edf0f5] bg-[#f8faff] px-4 py-3.5 text-[14px] font-medium text-[#1f2430] outline-none transition focus:border-[#5b3df5] focus:ring-2 focus:ring-[#5b3df5]/10"
+              placeholder="••••••••"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">Confirm New Password</label>
+            <input
+              type="password"
+              required
+              value={passwords.confirmPassword}
+              onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
+              className="w-full rounded-2xl border border-[#edf0f5] bg-[#f8faff] px-4 py-3.5 text-[14px] font-medium text-[#1f2430] outline-none transition focus:border-[#5b3df5] focus:ring-2 focus:ring-[#5b3df5]/10"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="mt-4 w-full rounded-full bg-[#5b3df5] py-3.5 text-[14px] font-bold text-white shadow-[0_12px_24px_rgba(91,61,245,0.22)] transition hover:bg-[#4e3ae9]"
+          >
+            Update Password
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage, adminUser, onAdminUpdate }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState({
+    fullName: adminUser?.name || "",
+    email: adminUser?.email || "",
+    avatar: adminUser?.avatar || saran
+  });
+  const [portalConfig, setPortalConfig] = useState({
+    welcomeMessage: "",
+    bannerImage: ""
+  });
+  const [configLoading, setConfigLoading] = useState(false);
+
+  useEffect(() => {
+    fetchProfile();
+    fetchPortalConfig();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch("/api/member/profile", { headers: getAdminHeaders() });
+      const data = await res.json();
+      if (res.ok) {
+        const uiMember = mapApiMemberToUi(data.member);
+        setProfile({
+          fullName: uiMember.name,
+          email: uiMember.email || '',
+          avatar: uiMember.avatar
+        });
+      }
+    } catch (err) {
+      console.error("Fetch profile error:", err);
+    }
+  };
+  const fetchPortalConfig = async () => {
+    try {
+      const headers = getAdminHeaders();
+      const [welcomeRes, bannerRes] = await Promise.all([
+        fetch("/api/settings/dashboard_welcome_message", { headers }),
+        fetch("/api/settings/dashboard_banner_image", { headers })
+      ]);
+      
+      const welcome = welcomeRes.ok ? await welcomeRes.json() : { value: "" };
+      const banner = bannerRes.ok ? await bannerRes.json() : { value: "" };
+      
+      setPortalConfig({
+        welcomeMessage: welcome.value || "",
+        bannerImage: banner.value || ""
+      });
+    } catch (err) {
+      console.error("Fetch portal config error:", err);
+    }
+  };
+
+  const handleSavePortalConfig = async () => {
+    setConfigLoading(true);
+    try {
+      const headers = getAdminHeaders();
+      const responses = await Promise.all([
+        fetch("/api/admin/settings/dashboard_welcome_message", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: portalConfig.welcomeMessage })
+        }),
+        fetch("/api/admin/settings/dashboard_banner_image", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: portalConfig.bannerImage })
+        })
+      ]);
+      
+      if (responses.every(r => r.ok)) {
+        alert("Portal configuration saved successfully!");
+      } else {
+        alert("Some settings failed to save.");
+      }
+    } catch (err) {
+      alert("Connection error while saving settings.");
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const base64 = await fileToBase64(file);
+      await saveProfile({ profile: { profileImage: base64 } });
+    } catch (err) {
+      alert("Failed to upload image");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (!window.confirm("Remove profile picture?")) return;
+    setLoading(true);
+    try {
+      await saveProfile({ profile: { profileImage: ADMIN_MEMBER_AVATAR } });
+    } catch (err) {
+      alert("Failed to remove image");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveProfile = async (updates) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/member/profile", {
+        method: "PUT",
+        headers: getAdminHeaders(),
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const updatedUser = mapApiMemberToUi(data.member);
+        onAdminUpdate(updatedUser);
+        localStorage.setItem("adminUser", JSON.stringify(updatedUser));
+        setProfile({
+          fullName: updatedUser.name,
+          email: updatedUser.email || '',
+          avatar: updatedUser.avatar
+        });
+        return true;
+      } else {
+        alert(data.message || "Failed to update profile");
+        return false;
+      }
+    } catch (err) {
+      alert("Connection error");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMembershipPayment = () => {
+    alert("Redirecting to membership payment portal...");
+  };
+
+  const membershipPlans = [
+    {
+      title: "Member",
+      amount: "₹1,500",
+      note: "Standard annual membership",
+    },
+    {
+      title: "LGB Member",
+      amount: "₹3,000",
+      note: "Leadership growth board membership",
+    },
+    {
+      title: "JAC",
+      amount: "₹2,000",
+      note: "Junior chamber membership",
+    },
+  ];
+
+  const [loginLogs, setLoginLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 30000); // 30s refresh
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch("/api/admin/login-logs", { headers: getAdminHeaders() });
+      const data = await res.json();
+      if (res.ok) {
+        setLoginLogs(data.logs.map(log => ({
+          user: log.name,
+          event: "Portal Access",
+          time: new Date(log.lastLogin).toLocaleString(),
+          status: "Logged In"
+        })));
+      }
+    } catch (err) {
+      console.error("Fetch logs error:", err);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    const success = await saveProfile({ 
+      name: profile.fullName, 
+      email: profile.email,
+      profile: { email: profile.email }
+    });
+    if (success) {
+      alert("Changes saved successfully!");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#eef2f8] text-[#1f2430]">
+      <div className="flex min-h-screen">
+        {isChangePasswordModalOpen && <ChangePasswordModal onClose={() => setIsChangePasswordModalOpen(false)} />}
+        
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="fixed top-4 right-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
+          className="fixed right-4 top-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-[0_18px_30px_rgba(91,61,245,0.30)] lg:hidden"
         >
           <Menu className="h-6 w-6" />
         </button>
 
-        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/30 lg:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 w-[270px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 sm:px-5 sm:py-6 ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <div className="flex h-full flex-col">
             <div>
               <SidebarBrand />
@@ -3301,12 +4493,23 @@ function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setS
                     setMobileMenuOpen(false);
                   }}
                 />
-                <div className="mt-2 rounded-2xl border border-[#e7eaf2] bg-white px-3 py-3 sm:px-4">
-                  <div className="flex items-center justify-between gap-3">
+
+                <div className="mt-3 overflow-hidden rounded-[24px] border border-[#e8ebf3] bg-white shadow-[0_10px_24px_rgba(25,30,60,0.04)]">
+                  <div className="flex items-center justify-between px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <Settings className="h-[16px] w-[16px] text-[#697386] sm:h-[18px] sm:w-[18px]" />
-                      <span className="text-[14px] font-medium text-[#697386] sm:text-[15px]">Settings</span>
+                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#f2efff] text-[#5b3df5]">
+                        <Settings className="h-[18px] w-[18px]" />
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-semibold text-[#1f2430] sm:text-[15px]">
+                          Settings
+                        </p>
+                        <p className="text-[11px] text-[#8b93a3] sm:text-[12px]">
+                          Page visibility
+                        </p>
+                      </div>
                     </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -3327,6 +4530,7 @@ function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setS
                       />
                     </button>
                   </div>
+
                   {showSettingsPage && (
                     <button
                       type="button"
@@ -3334,14 +4538,14 @@ function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setS
                         onNavigate("settings");
                         setMobileMenuOpen(false);
                       }}
-                      className={`mt-3 flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-left transition sm:px-4 sm:py-3 ${
+                      className={`flex w-full items-center justify-between border-t border-[#eef1f6] px-4 py-3 text-left transition ${
                         activePage === "settings"
-                          ? "text-[#5442ef]"
-                          : "text-[#697386] hover:text-[#1e2430]"
+                          ? "bg-[#f6f3ff] text-[#5442ef]"
+                          : "text-[#697386] hover:bg-[#fafbff] hover:text-[#1e2430]"
                       }`}
                     >
                       <span className="flex items-center gap-3 text-[14px] font-medium sm:text-[15px]">
-                        <Settings className="h-[16px] w-[16px] sm:h-[18px] sm:w-[18px]" />
+                        <Settings className="h-[18px] w-[18px]" />
                         Settings Page
                       </span>
                       {activePage === "settings" ? (
@@ -3358,384 +4562,1036 @@ function SettingsPage({ onLogout, onNavigate, activePage, showSettingsPage, setS
                 onLogout();
                 setMobileMenuOpen(false);
               }}
-              className="mt-auto flex h-[50px] w-full items-center justify-center rounded-full bg-[#ff1a12] text-[14px] font-semibold text-white shadow-[0_20px_30px_rgba(255,26,18,0.22)] sm:h-[56px] sm:text-[16px]"
+              className="mt-auto flex h-[52px] w-full items-center justify-center rounded-full bg-[#ff1a12] text-[14px] font-semibold text-white shadow-[0_20px_30px_rgba(255,26,18,0.22)] sm:h-[56px] sm:text-[16px]"
             >
               Logout
             </button>
           </div>
         </aside>
 
-        <main className="h-screen flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-4 text-[13px] font-medium text-[#6f7787] sm:text-[14px] md:text-[15px]">
-              <button className="text-[#5b3df5] font-semibold">Directory</button>
-              <button>Analytics</button>
-              <button>Resources</button>
-              <button>Support</button>
-            </div>
-
-            <div className="flex items-center gap-3 sm:gap-4">
-              <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-sm ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
-              </button>
-              <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                <img
-                  src={saran}
-                  alt="Sarankumar R"
-                  className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                />
-                <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
-              </div>
-            </div>
-          </div>
-
-          <section className="mt-5 sm:mt-6 md:mt-7 lg:mt-8">
-            <h1 className="text-[2rem] font-bold tracking-[-0.05em] leading-none sm:text-[2.5rem] md:text-[2.8rem] lg:text-[3rem]">
-              Profile Settings
-            </h1>
-            <p className="mt-2 max-w-[760px] text-[14px] text-[#6f7787] sm:mt-2.5 sm:text-[15px] md:mt-3 md:text-[16px] lg:text-[1.1rem]">
-              Manage your public presence and personal information across the Lumina Directory network.
-            </p>
-          </section>
-
-          <section className="mt-5 grid gap-5 sm:mt-6 sm:gap-6 lg:grid-cols-2">
-            <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
-              <div className="flex flex-col gap-5 sm:flex-row">
-                <div className="flex justify-center sm:justify-start">
-                  <div className="h-24 w-24 overflow-hidden rounded-[24px] bg-[#0f1728] shadow-lg sm:h-28 sm:w-28 md:h-[108px] md:w-[108px]">
-                    <img
-                      src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80"
-                      alt="Elena"
-                      className="h-full w-full object-cover opacity-85"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-3 sm:space-y-4">
-                  <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:mb-2 sm:text-[11px]">
-                      Full Name
-                    </p>
-                    <div className="rounded-2xl bg-[#f3f5f8] px-4 py-3 text-[14px] font-semibold text-[#414958] sm:px-5 sm:py-4 sm:text-[15px] md:text-[16px]">
-                      Elena Rodriguez
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:mb-2 sm:text-[11px]">
-                      Business Email
-                    </p>
-                    <div className="rounded-2xl bg-[#f3f5f8] px-4 py-3 text-[14px] font-semibold text-[#414958] sm:px-5 sm:py-4 sm:text-[15px] md:text-[16px]">
-                      elena@lumina.design
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:mb-2 sm:text-[11px]">
-                      Professional Bio
-                    </p>
-                    <div className="rounded-2xl bg-[#f3f5f8] px-4 py-3 text-[14px] leading-6 text-[#414958] sm:px-5 sm:py-4 sm:text-[15px] sm:leading-7 md:text-[16px]">
-                      Creative Director at Lumina specializing in high-fidelity interface design and digital brand identity systems.
-                    </div>
-                  </div>
-                </div>
+        <main className="relative z-10 flex-1 bg-[#eef2f8] px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
+          <div className="mx-auto w-full max-w-[1450px]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-4 text-[13px] font-medium text-[#6f7787] sm:text-[14px] md:text-[15px]">
+                <button className="font-semibold text-[#5b3df5]">Directory</button>
+                <button>Analytics</button>
+                <button>Resources</button>
+                <button>Support</button>
               </div>
 
-              <div className="mt-5 flex justify-end sm:mt-6 md:mt-7">
-                <button className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-5 py-2.5 text-[12px] font-semibold text-white shadow-[0_16px_28px_rgba(78,58,233,0.25)] sm:px-6 sm:py-3 sm:text-[13px] md:px-7 md:py-3.5 md:text-[14px] lg:px-8 lg:py-4">
-                  Save Profile Changes
+              <div className="flex items-center gap-3 sm:gap-4">
+                <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-[0_10px_24px_rgba(25,30,60,0.06)] ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
+                  <Bell className="h-5 w-5" />
+                  <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:right-3.5 sm:top-3.5"></span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigate("settings")}
+                  className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-[0_10px_24px_rgba(25,30,60,0.06)] ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:px-5 sm:py-2"
+                >
+                  <AdminHeader adminUser={adminUser} />
                 </button>
               </div>
             </div>
 
-            <div className="rounded-[30px] bg-gradient-to-br from-[#5b3df5] to-[#7b4dff] p-5 text-white shadow-[0_20px_40px_rgba(91,61,245,0.24)] sm:p-6 md:p-7">
-              <div className="inline-flex rounded-full bg-white/15 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] sm:px-3 sm:py-1 sm:text-[10px]">
-                Current Plan
+            <section className="mt-6 rounded-[32px] bg-gradient-to-br from-[#ffffff] via-[#f9faff] to-[#f3f5ff] px-5 py-6 shadow-[0_20px_50px_rgba(25,30,60,0.08)] ring-1 ring-[#e9edf6] sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="inline-flex rounded-full bg-[#ede9ff] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#5b3df5] sm:text-[11px]">
+                    Settings Workspace
+                  </div>
+
+                  <h1 className="mt-4 text-[2rem] font-bold leading-none tracking-[-0.05em] text-[#1f2430] sm:text-[2.5rem] md:text-[2.8rem] lg:text-[3rem]">
+                    Profile Settings
+                  </h1>
+
+                  <p className="mt-2.5 max-w-[760px] text-[13px] text-[#6f7787] sm:text-[14px] md:text-[15px] lg:text-[16px]">
+                    Manage your public presence and personal information across the Lumina Directory network.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[430px]">
+                  <div className="rounded-[24px] bg-white/85 px-4 py-4 shadow-[0_10px_25px_rgba(25,30,60,0.05)] ring-1 ring-[#edf0f5] backdrop-blur">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">
+                      Profile
+                    </p>
+                    <p className="mt-2 text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430]">
+                      Active
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] bg-white/85 px-4 py-4 shadow-[0_10px_25px_rgba(25,30,60,0.05)] ring-1 ring-[#edf0f5] backdrop-blur">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">
+                      Security
+                    </p>
+                    <p className="mt-2 text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430]">
+                      Enabled
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] bg-white/85 px-4 py-4 shadow-[0_10px_25px_rgba(25,30,60,0.05)] ring-1 ring-[#edf0f5] backdrop-blur">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">
+                      Membership
+                    </p>
+                    <p className="mt-2 text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430]">
+                      Renew
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-5 grid gap-5 lg:grid-cols-[1.12fr_0.88fr]">
+              <div className="rounded-[30px] bg-white p-5 shadow-[0_18px_45px_rgba(25,30,60,0.07)] ring-1 ring-[#e9edf6] sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2efff] text-[#5b3df5]">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[1.25rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.4rem]">
+                      Personal Profile
+                    </h3>
+                    <p className="text-[12px] text-[#8b93a3] sm:text-[13px]">
+                      Public profile and account details
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+                  <div className="flex flex-col items-center sm:items-start gap-4">
+                    <div className="h-24 w-24 rounded-full border-4 border-[#f2efff] overflow-hidden shadow-md">
+                       {profile.avatar && profile.avatar !== ADMIN_MEMBER_AVATAR ? (
+                        <img src={profile.avatar} alt="Admin" className="h-full w-full object-cover" />
+                       ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-[#5b3df5] text-white text-2xl font-bold">
+                          {(profile.fullName || "A")[0].toUpperCase()}
+                        </div>
+                       )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <label className="cursor-pointer rounded-full bg-[#5b3df5] px-4 py-2 text-[12px] font-bold text-white shadow-[0_12px_24px_rgba(91,61,245,0.22)] transition hover:bg-[#4e3ae9] sm:px-5 sm:text-[13px]">
+                          Change Picture
+                          <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                        </label>
+                        <button 
+                          onClick={handleRemoveImage}
+                          className="rounded-full bg-white px-4 py-2 text-[12px] font-bold text-[#f11a12] shadow-sm ring-1 ring-[#fdebeb] transition hover:bg-[#fff9f9] sm:px-5 sm:text-[13px]"
+                        >
+                          Remove
+                        </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-4 w-full">
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
+                        Full Name
+                      </p>
+                      <input
+                        type="text"
+                        value={profile.fullName}
+                        onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                        className="w-full rounded-[20px] border border-[#edf0f5] bg-[#f8faff] px-4 py-3 text-[14px] font-semibold text-[#414958] outline-none transition focus:border-[#5b3df5] sm:px-5 sm:py-4 sm:text-[15px] md:text-[16px]"
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
+                        Email Address
+                      </p>
+                      <input
+                        type="email"
+                        value={profile.email}
+                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                        placeholder="Enter your email address"
+                        className="w-full rounded-[20px] border border-[#edf0f5] bg-[#f8faff] px-4 py-3 text-[14px] font-semibold text-[#414958] outline-none transition focus:border-[#5b3df5] sm:px-5 sm:py-4 sm:text-[15px] md:text-[16px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={handleSaveProfile}
+                    className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-6 py-3 text-[13px] font-semibold text-white shadow-[0_18px_30px_rgba(78,58,233,0.25)] sm:px-7 sm:py-3.5 sm:text-[14px]"
+                  >
+                    Save Profile Changes
+                  </button>
+                </div>
               </div>
 
-              <h3 className="mt-5 text-[1.6rem] font-bold tracking-[-0.04em] sm:mt-6 sm:text-[1.8rem] md:mt-7 md:text-[2rem] lg:text-[2.2rem]">Enterprise</h3>
-              <p className="mt-1 text-[13px] text-white/80 sm:mt-2 sm:text-[14px] md:text-[15px]">Advanced features for power curators.</p>
+              <div className="rounded-[30px] bg-gradient-to-br from-[#5b3df5] via-[#6848fb] to-[#7d56ff] p-5 text-white shadow-[0_24px_50px_rgba(91,61,245,0.28)] ring-1 ring-white/10 sm:p-6">
+                <div className="inline-flex rounded-full bg-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] sm:text-[11px]">
+                  Membership Payment
+                </div>
 
-              <div className="mt-5 rounded-[24px] bg-white/10 p-4 ring-1 ring-white/10 sm:mt-6 sm:p-5 md:mt-7 md:p-6 lg:mt-8">
-                <p className="text-[12px] font-semibold sm:text-[13px]">Visa ending in 4242</p>
-                <p className="mt-1 text-[11px] text-white/70 sm:text-[12px]">Expires 09/27</p>
-              </div>
-
-              <button className="mt-5 w-full rounded-full bg-white px-5 py-3 text-[12px] font-semibold text-[#5b3df5] sm:mt-6 sm:py-3.5 sm:text-[13px] md:mt-7 md:py-4 md:text-[14px] lg:mt-8">
-                Download Invoice
-              </button>
-            </div>
-          </section>
-
-          <section className="mt-5 grid gap-5 sm:mt-6 sm:gap-6 lg:grid-cols-2">
-            <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
-              <div className="flex items-center gap-2 text-[#5b3df5] sm:gap-3">
-                <Lock className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
-                <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.6rem] lg:text-[1.8rem]">
-                  Security & Authentication
+                <h3 className="mt-5 text-[1.7rem] font-bold tracking-[-0.04em] sm:text-[1.9rem] md:text-[2.1rem]">
+                  Pay your Membership
                 </h3>
-              </div>
 
-              <div className="mt-4 rounded-[22px] bg-[#f4f6f9] px-4 py-4 sm:mt-5 sm:px-5 sm:py-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-[14px] font-semibold text-[#2a3140] sm:text-[15px] md:text-[16px]">Two-Factor Authentication</p>
-                    <p className="mt-1 text-[12px] text-[#7a8190] sm:text-[13px] md:text-[14px]">
-                      Add an extra layer of security to your account.
-                    </p>
-                  </div>
-                  <div className="relative h-7 w-12 rounded-full bg-[#5b3df5] sm:h-8 sm:w-14">
-                    <span className="absolute right-1 top-1 h-5 w-5 rounded-full bg-white sm:h-6 sm:w-6" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 sm:grid-cols-2">
-                <button className="rounded-2xl border border-[#eceff5] bg-white px-4 py-3 text-[13px] font-semibold text-[#5f6778] sm:px-5 sm:py-4 sm:text-[14px] md:text-[15px]">
-                  Change Password
-                </button>
-                <button className="rounded-2xl border border-[#eceff5] bg-white px-4 py-3 text-[13px] font-semibold text-[#5f6778] sm:px-5 sm:py-4 sm:text-[14px] md:text-[15px]">
-                  Logout All Devices
-                </button>
-              </div>
-
-              <div className="mt-5 sm:mt-6 md:mt-7">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
-                  Active Sessions
+                <p className="mt-2 text-[13px] text-white/80 sm:text-[14px] md:text-[15px]">
+                  Scan the QR or click pay to continue membership payment.
                 </p>
 
-                <div className="mt-3 space-y-4 sm:mt-4 sm:space-y-5">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#303746] sm:text-[14px] md:text-[15px]">
-                        MacBook Pro · San Francisco, US
-                      </p>
-                      <p className="mt-1 text-[11px] text-[#8b92a1] sm:text-[12px] md:text-[13px]">Current Session</p>
-                    </div>
-                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#4e3ae9] sm:text-[12px]">
-                      Active
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#303746] sm:text-[14px] md:text-[15px]">
-                        iPhone 15 Pro · Austin, US
-                      </p>
-                      <p className="mt-1 text-[11px] text-[#8b92a1] sm:text-[12px] md:text-[13px]">3 hours ago</p>
-                    </div>
-                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#7a8190] sm:text-[12px]">
-                      Revoke
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-5 sm:space-y-6">
-              <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
-                <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.4rem] md:text-[1.5rem] lg:text-[1.6rem]">
-                  Alert Preferences
-                </h3>
-
-                <div className="mt-4 space-y-3 text-[13px] text-[#4f5666] sm:mt-5 sm:space-y-4 sm:text-[14px] md:text-[15px]">
-                  <div className="flex items-center justify-between">
-                    <span>Email Digest</span>
-                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-[#5b3df5] text-white text-[10px] sm:h-5 sm:w-5">✓</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Push Notifications</span>
-                    <span className="flex h-4 w-4 items-center justify-center rounded-md bg-[#5b3df5] text-white text-[10px] sm:h-5 sm:w-5">✓</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>SMS Alerts</span>
-                    <span className="flex h-4 w-4 items-center justify-center rounded-md border border-[#dfe3ec] text-[#a0a7b5] sm:h-5 sm:w-5"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.4rem] md:text-[1.5rem] lg:text-[1.6rem]">Team</h3>
-                  <button className="text-[11px] font-bold text-[#5b3df5] sm:text-[12px]">Manage All</button>
+                <div className="mt-5 flex justify-center rounded-[24px] bg-white/10 p-4 ring-1 ring-white/10 backdrop-blur">
+                  <img
+                    src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=membership-payment"
+                    alt="Membership Payment QR"
+                    className="h-[130px] w-[130px] rounded-[22px] bg-white p-2 object-contain shadow-[0_14px_24px_rgba(0,0,0,0.18)] sm:h-[145px] sm:w-[145px]"
+                  />
                 </div>
 
-                <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-4">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80"
-                      alt="Marcus"
-                      className="h-10 w-10 rounded-xl object-cover sm:h-11 sm:w-11 md:h-12 md:w-12"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#2f3644] sm:text-[14px] md:text-[15px]">Marcus Chen</p>
-                      <p className="text-[11px] text-[#8b92a1] sm:text-[12px] md:text-[13px]">Admin</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80"
-                      alt="Sarah"
-                      className="h-10 w-10 rounded-xl object-cover sm:h-11 sm:w-11 md:h-12 md:w-12"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#2f3644] sm:text-[14px] md:text-[15px]">Sarah Jenkins</p>
-                      <p className="text-[11px] text-[#8b92a1] sm:text-[12px] md:text-[13px]">Editor</p>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="mt-4 w-full rounded-2xl border border-dashed border-[#d9deea] px-4 py-3 text-[12px] font-semibold text-[#5f6778] sm:mt-5 sm:py-4 sm:text-[13px] md:text-[14px]">
-                  + Invite Member
+                <button
+                  onClick={handleMembershipPayment}
+                  className="mt-6 w-full rounded-full bg-white px-5 py-3.5 text-[13px] font-semibold text-[#5b3df5] shadow-[0_14px_24px_rgba(255,255,255,0.16)] sm:text-[14px]"
+                >
+                  Pay
                 </button>
               </div>
-            </div>
-          </section>
+            </section>
+
+            <section className="mt-5 grid gap-4 md:grid-cols-3">
+              {membershipPlans.map((plan) => (
+                <div
+                  key={plan.title}
+                  className="rounded-[28px] bg-white p-5 shadow-[0_16px_35px_rgba(25,30,60,0.06)] ring-1 ring-[#e9edf6] sm:p-6"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0]">
+                        Membership Type
+                      </p>
+                      <h4 className="mt-3 text-[1.4rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.55rem]">
+                        {plan.title}
+                      </h4>
+                    </div>
+                    <div className="rounded-2xl bg-[#f2efff] px-3 py-2 text-[11px] font-bold text-[#5b3df5]">
+                      Active
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-[2rem] font-bold leading-none tracking-[-0.06em] text-[#5b3df5] sm:text-[2.25rem]">
+                    {plan.amount}
+                  </p>
+
+                  <p className="mt-4 text-[13px] leading-6 text-[#7a8190] sm:text-[14px]">
+                    {plan.note}
+                  </p>
+                </div>
+              ))}
+            </section>
+
+            <section className="mt-5 grid gap-5 lg:grid-cols-[1.08fr_1fr]">
+              <div className="rounded-[30px] bg-white p-5 shadow-[0_18px_45px_rgba(25,30,60,0.07)] ring-1 ring-[#e9edf6] sm:p-6 lg:p-7">
+                <div className="flex items-center gap-3 text-[#5b3df5]">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2efff]">
+                    <Lock className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.55rem] lg:text-[1.7rem]">
+                    Security & Authentication
+                  </h3>
+                </div>
+
+                <div className="mt-5 rounded-[24px] border border-[#edf0f5] bg-[#f8faff] px-4 py-4 sm:px-5 sm:py-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[14px] font-semibold text-[#2a3140] sm:text-[15px] md:text-[16px]">
+                        Two-Factor Authentication
+                      </p>
+                      <p className="mt-1 text-[12px] text-[#7a8190] sm:text-[13px] md:text-[14px]">
+                        Add an extra layer of security to your account.
+                      </p>
+                    </div>
+
+                    <div className="relative h-8 w-14 rounded-full bg-[#5b3df5] shadow-inner">
+                      <span className="absolute right-1 top-1 h-6 w-6 rounded-full bg-white shadow" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <button
+                    onClick={() => setIsChangePasswordModalOpen(true)}
+                    className="rounded-[22px] border border-[#eceff5] bg-[#fafbff] px-5 py-4 text-[13px] font-semibold text-[#5f6778] transition hover:bg-white sm:text-[14px] md:text-[15px]"
+                  >
+                    Change Password
+                  </button>
+                  <button className="rounded-[22px] border border-[#eceff5] bg-[#fafbff] px-5 py-4 text-[13px] font-semibold text-[#5f6778] transition hover:bg-white sm:text-[14px] md:text-[15px]">
+                    Logout All Devices
+                  </button>
+                </div>
+
+                <div className="mt-6">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
+                    Event Login Logs
+                  </p>
+
+                  <div className="mt-4 space-y-4">
+                    {loginLogs.map((log, index) => (
+                      <div
+                        key={`${log.user}-${index}`}
+                        className="flex flex-col gap-3 rounded-[22px] border border-[#eef1f6] bg-[#fafbff] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                      >
+                        <div>
+                          <p className="text-[13px] font-semibold text-[#303746] sm:text-[14px] md:text-[15px]">
+                            {log.user}
+                          </p>
+                          <p className="mt-1 text-[11px] text-[#5f6778] sm:text-[12px] md:text-[13px]">
+                            {log.event}
+                          </p>
+                          <p className="mt-1 text-[11px] text-[#8b92a1] sm:text-[12px]">
+                            {log.time}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+                            log.status === "Logged In"
+                              ? "bg-emerald-50 text-emerald-600"
+                              : "bg-rose-50 text-rose-600"
+                          }`}
+                        >
+                          {log.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-[30px] bg-white p-5 shadow-[0_18px_45px_rgba(25,30,60,0.07)] ring-1 ring-[#e9edf6] sm:p-6 lg:p-7">
+                  <div className="mb-5 flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2efff] text-[#5b3df5]">
+                      <Bell className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.45rem] md:text-[1.55rem]">
+                        Alert Preferences
+                      </h3>
+                      <p className="text-[12px] text-[#8b93a3] sm:text-[13px]">
+                        Choose how updates reach you
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 text-[13px] text-[#4f5666] sm:text-[14px] md:text-[15px]">
+                    {[
+                      { label: "Email Digest", active: true },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center justify-between rounded-[18px] border border-[#eef1f6] bg-[#fafbff] px-4 py-3"
+                      >
+                        <span>{item.label}</span>
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-md text-[10px] ${
+                            item.active
+                              ? "bg-[#5b3df5] text-white"
+                              : "border border-[#dfe3ec] text-[#a0a7b5]"
+                          }`}
+                        >
+                          {item.active ? "✓" : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[30px] bg-white p-5 shadow-[0_18px_45px_rgba(25,30,60,0.07)] ring-1 ring-[#e9edf6] sm:p-6 lg:p-7">
+                  <div className="flex items-center gap-3 text-[#A0813D]">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F5F2EA]">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-[1.35rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.55rem] lg:text-[1.7rem]">
+                        Portal Appearance
+                      </h3>
+                      <p className="text-[12px] text-[#8b93a3] sm:text-[13px]">
+                        Customize the user portal dashboard
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-6">
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
+                        Dashboard Welcome Message
+                      </p>
+                      <textarea
+                        value={portalConfig.welcomeMessage}
+                        onChange={(e) => setPortalConfig({ ...portalConfig, welcomeMessage: e.target.value })}
+                        rows={3}
+                        className="w-full rounded-[20px] border border-[#edf0f5] bg-[#f8faff] px-4 py-3 text-[14px] font-semibold text-[#414958] outline-none transition focus:border-[#5b3df5] sm:px-5 sm:py-4 sm:text-[15px]"
+                        placeholder="Enter the welcome message for members..."
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9aa2b0] sm:text-[11px]">
+                        Dashboard Banner Image URL
+                      </p>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          value={portalConfig.bannerImage}
+                          onChange={(e) => setPortalConfig({ ...portalConfig, bannerImage: e.target.value })}
+                          className="flex-1 rounded-[20px] border border-[#edf0f5] bg-[#f8faff] px-4 py-3 text-[14px] font-semibold text-[#414958] outline-none transition focus:border-[#5b3df5] sm:px-5 sm:py-4 sm:text-[15px]"
+                          placeholder="https://images.unsplash.com/..."
+                        />
+                        {portalConfig.bannerImage && (
+                          <div className="h-16 w-32 shrink-0 overflow-hidden rounded-xl border border-[#edf0f5]">
+                            <img src={portalConfig.bannerImage} alt="Preview" className="h-full w-full object-cover" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={handleSavePortalConfig}
+                        disabled={configLoading}
+                        className="rounded-full bg-gradient-to-r from-[#A0813D] to-[#8B6D31] px-6 py-3 text-[13px] font-semibold text-white shadow-[0_18px_30px_rgba(160,129,61,0.25)] transition hover:-translate-y-0.5 disabled:opacity-50 sm:px-8 sm:text-[14px]"
+                      >
+                        {configLoading ? "Saving..." : "Update Portal Settings"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         </main>
       </div>
     </div>
   );
 }
 
-function EventsPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage, eventCategoryFilter = "All", setEventCategoryFilter }) {
-  const [eventForm, setEventForm] = useState({
-    name: "",
-    category: "Management",
+function EventsPage({
+  onLogout,
+  onNavigate,
+  activePage,
+  showSettingsPage,
+  setShowSettingsPage,
+  eventCategoryFilter = "All",
+  setEventCategoryFilter,
+  adminUser,
+}) {
+  const [eventStep, setEventStep] = useState(1);
+
+    const [eventForm, setEventForm] = useState({
+    eventName: "",
+    vertical: "Management",
+    idType: "",
+    date: "",
+    time: "",
+    program: "",
     venue: "",
-    location: "",
-    dateTime: "",
     chiefGuest: "",
     guestOfHonor: "",
+    facultySpeaker: "",
+    banner: "",
+    invitation: "",
+
+    agendaItems: [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ],
+
+    chiefGuestId: "",
+    guestOfHonorId: "",
+    facultySpeakerId: "",
+    zoneNationalPerson: "",
+    eventOverview: "",
+    eventGallery: [],
+    secretaryName: "",
+    secretarySignature: "",
+    secretaryPerson: "Secretary",
+
+    managementAgenda: {
+  officeSecretary: "",
+  officeRecipient: "",
+  noticeMeetingName: "",
+  noticeDateTime: "",
+  noticeVenue: "",
+  hostInfo: "",
+
+  item1: "",
+  item2: "",
+  item3: "",
+  item4: "",
+  item5: "",
+  item6: "",
+  item7Main: "",
+  item7MovedBy: "",
+  item7SecondedBy: "",
+  item8Main: "",
+  item8MovedBy: "",
+  item8SecondedBy: "",
+  item9: "",
+  item10: "",
+  item11: "",
+  item12: "",
+  item13: "",
+  item14: "",
+  item15: "",
+  item16: "",
+ otherSubjects: [],
+  item17: "",
+  item18: "",
+  item19: "",
+  item20: "",
+  item21: "",
+},
   });
-  const [bannerFile, setBannerFile] = useState(null);
+
   const [bannerPreview, setBannerPreview] = useState("");
+  const [invitationPreview, setInvitationPreview] = useState("");
+  const [signaturePreview, setSignaturePreview] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [eventsSaving, setEventsSaving] = useState(false);
+  const [liveEvents, setLiveEvents] = useState([]);
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
+
+  const resetEventForm = () => {
+    setEventForm({
+      eventName: '', vertical: 'Management', idType: '', date: '', time: '',
+      program: '', venue: '', chiefGuest: '', guestOfHonor: '', facultySpeaker: '',
+      banner: '', invitation: '', agendaItems: Array(14).fill(''),
+      chiefGuestId: '', guestOfHonorId: '', facultySpeakerId: '',
+      zoneNationalPerson: '', eventOverview: '', eventGallery: [],
+      secretaryName: '', secretarySignature: '', secretaryPerson: 'Secretary',
+      isPublic: false,
+      managementAgenda: {
+        officeSecretary: '', officeRecipient: '', noticeMeetingName: '',
+        noticeDateTime: '', noticeVenue: '', hostInfo: '',
+        item1:'',item2:'',item3:'',item4:'',item5:'',item6:'',
+        item7Main:'',item7MovedBy:'',item7SecondedBy:'',
+        item8Main:'',item8MovedBy:'',item8SecondedBy:'',
+        item9:'',item10:'',item11:'',item12:'',item13:'',item14:'',item15:'',item16:'',
+        otherSubjects:[],item17:'',item18:'',item19:'',item20:'',item21:'',
+      },
+    });
+    setBannerPreview('');
+    setInvitationPreview('');
+    setSignaturePreview('');
+    setEventStep(1);
+    setIsEditing(false);
+    setEditingEventId(null);
+  };
+
+  const handleEditClick = (event) => {
+    setEventForm({
+      eventName: event.eventName || '',
+      vertical: event.vertical || 'Management',
+      idType: event.idType || '',
+      date: event.date || '',
+      time: event.time || '',
+      program: event.program || '',
+      venue: event.venue || '',
+      chiefGuest: event.chiefGuest || '',
+      guestOfHonor: event.guestOfHonor || '',
+      facultySpeaker: event.facultySpeaker || '',
+      banner: event.banner || '',
+      invitation: event.invitation || '',
+      agendaItems: Array.isArray(event.agendaItems) ? [...event.agendaItems] : Array(14).fill(''),
+      chiefGuestId: event.chiefGuestId || '',
+      guestOfHonorId: event.guestOfHonorId || '',
+      facultySpeakerId: event.facultySpeakerId || '',
+      zoneNationalPerson: event.zoneNationalPerson || '',
+      eventOverview: event.eventOverview || '',
+      eventGallery: Array.isArray(event.eventGallery) ? [...event.eventGallery] : [],
+      secretaryName: event.secretaryName || '',
+      secretarySignature: event.secretarySignature || '',
+      secretaryPerson: event.secretaryPerson || 'Secretary',
+      isPublic: event.isPublic || false,
+      managementAgenda: { ...event.managementAgenda } || {},
+    });
+    setBannerPreview(event.banner || '');
+    setInvitationPreview(event.invitation || '');
+    setSignaturePreview(event.secretarySignature || '');
+    setIsEditing(true);
+    setEditingEventId(event._id || event.id);
+    setEventStep(1);
+    setShowEventForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteEvent = async (id) => {
+    if (!id) {
+      alert('Event ID missing.');
+      return;
+    }
+    if (!window.confirm('Are you sure you want to delete this event?')) return;
+    try {
+      const res = await fetch(`/api/admin/events/${id}`, {
+        method: 'DELETE',
+        headers: getAdminHeaders(),
+      });
+      if (res.ok) {
+        alert('Event deleted successfully!');
+        fetchEvents(eventCategoryFilter);
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to delete event.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Connection error.');
+    }
+  };
+
+  const handleTogglePublic = async (event) => {
+    const id = event._id || event.id;
+    const newStatus = !event.isPublic;
+    
+    try {
+      let res = await fetch(`/api/admin/events/${id}/visibility`, {
+        method: 'PATCH',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ isPublic: newStatus }),
+      });
+
+      if (res.status === 404) {
+        res = await fetch(`/api/admin/events/${id}`, {
+          method: 'PUT',
+          headers: getAdminHeaders(),
+          body: JSON.stringify({ ...event, isPublic: newStatus }),
+        });
+      }
+      
+      if (res.ok) {
+        // Optimistic update or just refetch
+        fetchEvents(eventCategoryFilter);
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to update event status.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Connection error.');
+    }
+  };
+
+  // Fetch events from backend (filtered by eventCategoryFilter)
+  const fetchEvents = async (verticalFilter) => {
+    setEventsLoading(true);
+    try {
+      const url = verticalFilter && verticalFilter !== 'All'
+        ? `/api/admin/events?vertical=${encodeURIComponent(verticalFilter)}`
+        : '/api/admin/events';
+      const res = await fetch(url, { headers: getAdminHeaders() });
+      if (res.status === 401 || res.status === 403) { onLogout(); return; }
+      const data = await res.json();
+      if (res.ok) setLiveEvents(data.events || []);
+    } catch (e) { console.error('Fetch events error:', e); }
+    finally { setEventsLoading(false); }
+  };
+
+  useEffect(() => { fetchEvents(eventCategoryFilter); }, [eventCategoryFilter]);
+
+  // Auto-fill Management Agenda from Section 1 when user opens Step 2
+  useEffect(() => {
+    if (eventStep === 2 && eventForm.vertical === 'Management') {
+      setEventForm(prev => ({
+        ...prev,
+        managementAgenda: {
+          ...prev.managementAgenda,
+          // Always auto-fill from section 1 to ensure updates propagate
+          noticeDateTime: (prev.date && prev.time ? `${prev.date} at ${prev.time}` : prev.managementAgenda?.noticeDateTime),
+          noticeVenue: prev.venue || '',
+          hostInfo: prev.chiefGuest || prev.facultySpeaker || '',
+          officeRecipient: prev.guestOfHonor || '',
+        },
+      }));
+    }
+  }, [eventStep]);
+
+  const verticalOptions = [
+    "Management",
+    "Training",
+    "Business",
+    "Community Development",
+    "Public Relationship & Marketing",
+    "Growth & Development",
+    "Internationalism",
+    "Junior Jaycee",
+    "Lady Jaycee",
+  ];
+
+  const agendaLabels = [
+    "Meeting call to order",
+    "JCI Creed",
+    "Welcome Address",
+    "Recognition",
+    "Event chairman",
+    "Introduction of Faculty",
+    "Chief Guest Introduction",
+    "Chief Guest address",
+    "Floor Handed over to Faculty",
+    "Floor Handed over to the Chair",
+    "Feedback",
+    "Pleasantries",
+    "Announcements & Vote of Thanks",
+    "Adjournment",
+  ];
+
+    const managementIdTypeOptions = ["LGB", "GB", "AGB"];
+
+  const handleManagementAgendaChange = (key, value) => {
+    setEventForm((prev) => ({
+      ...prev,
+      managementAgenda: {
+        ...prev.managementAgenda,
+        [key]: value,
+      },
+    }));
+  };
+
+  const addOtherSubjectField = () => {
+  setEventForm((prev) => ({
+    ...prev,
+    managementAgenda: {
+      ...prev.managementAgenda,
+      otherSubjects: [
+        ...(prev.managementAgenda.otherSubjects || []),
+        "",
+      ],
+    },
+  }));
+};
+
+const updateOtherSubjectField = (index, value) => {
+  setEventForm((prev) => ({
+    ...prev,
+    managementAgenda: {
+      ...prev.managementAgenda,
+      otherSubjects: (prev.managementAgenda.otherSubjects || []).map((item, i) =>
+        i === index ? value : item
+      ),
+    },
+  }));
+};
+
+const removeOtherSubjectField = (index) => {
+  setEventForm((prev) => ({
+    ...prev,
+    managementAgenda: {
+      ...prev.managementAgenda,
+      otherSubjects: (prev.managementAgenda.otherSubjects || []).filter(
+        (_, i) => i !== index
+      ),
+    },
+  }));
+};
+
+  const isEventCompleted = (event) => {
+  if (!event?.date || !event?.time) return false;
+  const eventDateTime = new Date(`${event.date}T${event.time}`);
+  return new Date() > eventDateTime;
+};
 
   const handleEventChange = (key, value) => {
     setEventForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleBannerChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBannerFile(file);
-    setBannerPreview(URL.createObjectURL(file));
+  const handleAgendaChange = (index, value) => {
+    setEventForm((prev) => ({
+      ...prev,
+      agendaItems: prev.agendaItems.map((item, i) =>
+        i === index ? value : item
+      ),
+    }));
   };
 
-  const handleCreateEvent = () => {
+  const goToEventStep2 = () => {
     if (
-      !eventForm.name.trim() ||
-      !eventForm.category.trim() ||
-      !eventForm.venue.trim() ||
-      !eventForm.location.trim() ||
-      !eventForm.dateTime.trim() ||
-      !eventForm.chiefGuest.trim() ||
-      !eventForm.guestOfHonor.trim()
+      !eventForm.eventName.trim() ||
+      !eventForm.vertical.trim() ||
+      !eventForm.date.trim() ||
+      !eventForm.time.trim() ||
+      !eventForm.program.trim() ||
+      !eventForm.venue.trim()
     ) {
-      alert("Please fill all event details.");
+      alert("Please fill all Event Details.");
       return;
     }
-    alert("Event created successfully.");
+
+    if (eventForm.vertical === "Management" && !eventForm.idType.trim()) {
+      alert("Please select ID Type.");
+      return;
+    }
+
+    setEventStep(2);
   };
 
-  const eventCards = [
+
+  const backToEventStep1 = () => {
+    setEventStep(1);
+  };
+
+  const goToEventStep3 = () => {
+    if (!eventForm.secretaryName.trim()) {
+      alert("Please enter secretary name.");
+      return;
+    }
+    setEventStep(3);
+  };
+
+  const backToEventStep2 = () => {
+    setEventStep(2);
+  };
+
+  const handleBannerUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEventForm((prev) => ({ ...prev, banner: reader.result }));
+      setBannerPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleInvitationUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEventForm((prev) => ({ ...prev, invitation: reader.result }));
+      setInvitationPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEventForm((prev) => ({ ...prev, secretarySignature: reader.result }));
+      setSignaturePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateEvent = async () => {
+    setEventsSaving(true);
+    try {
+      const url = isEditing ? `/api/admin/events/${editingEventId}` : '/api/admin/events';
+      const method = isEditing ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method: method,
+        headers: getAdminHeaders(),
+        body: JSON.stringify(eventForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(isEditing ? 'Event updated successfully!' : 'Event created successfully!');
+        resetEventForm();
+        setShowEventForm(false);
+        // Refresh Active Schedule
+        await fetchEvents(eventCategoryFilter);
+      } else {
+        alert(data.message || 'Failed to process event.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Connection error. Is the server running?');
+    } finally {
+      setEventsSaving(false);
+    }
+  };
+
+  const handleEventGalleryUpload = async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+
+  const converted = await Promise.all(
+    files.slice(0, 6).map(
+      (file) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        })
+    )
+  );
+
+  setEventForm((prev) => ({
+    ...prev,
+    eventGallery: converted,
+  }));
+};
+
+   const eventCards = [
     {
       id: 1,
-      status: "LIVE",
-      tag: "MANAGEMENT",
-      statusClass: "bg-[#ff5c5c] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=900&q=80",
-      title: "Strategic Board Meet 2024",
-      meta: "Conference Hall A · 10:00 AM",
-      action: "arrow",
+      title: "Annual Strategy Session",
+      eventName: "Annual Strategy Session",
+      image:
+        "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80",
+      status: "Completed",
+      statusClass: "bg-emerald-100 text-emerald-700",
+      tag: "Management",
+      tagClass: "bg-[#eef2ff] text-[#5b3df5]",
+      meta: "Madurai • 10:00 AM • Apr 10, 2026",
+      vertical: "Management",
+      date: "2026-04-10",
+      time: "10:00",
+      program: "Annual Strategy Session",
+      venue: "Madurai",
+      chiefGuest: "Mr. Senthil Kumar",
+      guestOfHonor: "Mr. Rajesh Babu",
+      chiefGuestId: "CG-1001",
+      guestOfHonorId: "GH-1002",
+      facultySpeaker: "Mr. Arun Prakash",
+      facultySpeakerId: "FS-1003",
+      zoneNationalPerson: "Zone President",
+      eventOverview:
+        "A strategic leadership meeting focused on annual goals, membership planning, chapter growth, and executive alignment for the upcoming cycle.",
+      eventGallery: [
+        "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=900&q=80",
+      ],
     },
-    {
-      id: 2,
-      status: "IN 2 DAYS",
-      tag: "TRAINING",
-      statusClass: "bg-[#5b3df5] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&w=900&q=80",
-      title: "Leadership Excellence Workshop",
-      meta: "Oct 26, 2024 · 02:00 PM",
-      guest: "Trainer: Dr. Elena Vance",
-      action: "edit",
-    },
+ {
+  id: 2,
+  title: "Leadership Excellence Program",
+  eventName: "Leadership Excellence Program",
+  image:
+    "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&w=1200&q=80",
+  status: "Completed",
+  statusClass: "bg-emerald-100 text-emerald-700",
+  tag: "Training",
+  tagClass: "bg-[#eef2ff] text-[#5b3df5]",
+  meta: "Chennai • 02:30 PM • Apr 05, 2026",
+  vertical: "Training",
+  date: "2026-04-05",
+  time: "14:30",
+  program: "Leadership Excellence Program",
+  venue: "Chennai",
+  chiefGuest: "Dr. Karthik Raman",
+  guestOfHonor: "Ms. Priya Devi",
+  chiefGuestId: "CG-2001",
+  guestOfHonorId: "GH-2002",
+  facultySpeaker: "Dr. Elena Vance",
+  facultySpeakerId: "FS-2003",
+  zoneNationalPerson: "National Trainer",
+  eventOverview:
+    "An intensive workshop designed to build leadership confidence, public speaking, decision-making, and team management skills among members.",
+  eventGallery: [
+    "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&w=900&q=80",
+    "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=900&q=80",
+  ],
+},
     {
       id: 3,
-      status: "UPCOMING",
-      tag: "BUSINESS",
-      statusClass: "bg-[#10b981] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=900&q=80",
-      title: "MSME Networking Summit",
-      meta: "Trade Center · Nov 05",
-      action: "arrow",
-    },
-    {
-      id: 4,
-      status: "PLANNED",
-      tag: "COMMUNITY Development",
-      statusClass: "bg-[#f59e0b] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1559027615-cd942b03fb51?auto=format&fit=crop&w=900&q=80",
-      title: "City Wellness Initiative",
-      meta: "Central Park · Nov 12",
-      action: "arrow",
-    },
-    {
-      id: 5,
-      status: "UPCOMING",
-      tag: "Growth & Development",
-      statusClass: "bg-[#eb4899] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=900&q=80",
-      title: "Career 180 Seminar",
-      meta: "Town Hall · Nov 18",
-      action: "arrow",
-    },
-    {
-      id: 6,
-      status: "INTERNATIONAL",
-      tag: "Internationalism",
-      statusClass: "bg-[#3b82f6] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1526772662000-3f88f10405ff?auto=format&fit=crop&w=900&q=80",
-      title: "Global Youth Exchange",
-      meta: "Virtual · Dec 02",
-      action: "arrow",
-    },
-    {
-      id: 7,
-      status: "LIVE",
-      tag: "Junior Jaycee",
-      statusClass: "bg-[#8b5cf6] text-white",
-      tagClass: "bg-[#111827] text-white",
-      image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=900&q=80",
-      title: "NextGen Leaders Camp",
-      meta: "Academy Grounds · Dec 10",
-      action: "arrow",
+      title: "MSME Connect Program",
+      eventName: "MSME Connect Program",
+      image:
+        "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1200&q=80",
+      status: "Upcoming",
+      statusClass: "bg-sky-100 text-sky-700",
+      tag: "Business",
+      tagClass: "bg-[#eef2ff] text-[#5b3df5]",
+      meta: "Coimbatore • 11:30 AM • May 06, 2026",
+      vertical: "Business",
+      date: "2026-05-06",
+      time: "11:30",
+      program: "MSME Connect Program",
+      venue: "Coimbatore",
+      chiefGuest: "Mr. Mohan Raj",
+      guestOfHonor: "Mrs. Keerthana",
+      chiefGuestId: "CG-3001",
+      guestOfHonorId: "GH-3002",
+      facultySpeaker: "Ms. Priya Raman",
+      facultySpeakerId: "FS-3003",
+      zoneNationalPerson: "National Business Chairman",
+      eventOverview:
+        "A business networking summit connecting entrepreneurs, startups, and industry leaders to explore partnerships and local enterprise growth.",
+      eventGallery: [
+        "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80",
+      ],
     },
   ];
-
-  const filteredCards = eventCategoryFilter === "All" || !eventCategoryFilter
-    ? eventCards 
-    : eventCards.filter(card => card.tag.toUpperCase() === eventCategoryFilter.toUpperCase());
+  const filteredCards = liveEvents.map((ev) => ({
+    id: ev._id,
+    _id: ev._id,
+    title: ev.eventName,
+    eventName: ev.eventName,
+    image: ev.banner ||
+      'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80',
+    status: (() => {
+      const dt = new Date(`${ev.date}T${ev.time}`);
+      return new Date() > dt ? 'Completed' : 'Upcoming';
+    })(),
+    statusClass: (() => {
+      const dt = new Date(`${ev.date}T${ev.time}`);
+      return new Date() > dt ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700';
+    })(),
+    tag: ev.vertical,
+    tagClass: 'bg-[#eef2ff] text-[#5b3df5]',
+    meta: `${ev.venue || 'TBD'} \u2022 ${ev.time} \u2022 ${ev.date}`,
+    vertical: ev.vertical,
+    date: ev.date,
+    time: ev.time,
+    program: ev.program,
+    venue: ev.venue,
+    chiefGuest: ev.chiefGuest,
+    guestOfHonor: ev.guestOfHonor,
+    chiefGuestId: ev.chiefGuestId,
+    guestOfHonorId: ev.guestOfHonorId,
+    facultySpeaker: ev.facultySpeaker,
+    facultySpeakerId: ev.facultySpeakerId,
+    zoneNationalPerson: ev.zoneNationalPerson,
+    eventOverview: ev.eventOverview,
+    eventGallery: ev.eventGallery || [],
+    managementAgenda: ev.managementAgenda || {},
+    agendaItems: ev.agendaItems || [],
+    idType: ev.idType,
+    secretaryName: ev.secretaryName,
+    secretaryPerson: ev.secretaryPerson,
+  }));
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f4f5f7] text-[#1f2430]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#f4f5f7] text-[#1f2430]">
+      <div className="flex min-h-screen">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="fixed top-4 right-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
+          className="fixed right-4 top-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
         >
           <Menu className="h-6 w-6" />
         </button>
 
-        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          } sm:px-5 sm:py-6`}
+        >
           <div className="flex h-full flex-col">
             <div>
               <SidebarBrand />
@@ -3810,17 +5666,27 @@ function EventsPage({ onLogout, onNavigate, activePage, showSettingsPage, setSho
           </div>
         </aside>
 
-        <main className="h-screen flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-8">
+        <main className="relative z-10 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-8">
           <div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h1 className="text-[1.8rem] font-bold tracking-[-0.05em] text-[#1f2430] sm:text-[2rem] md:text-[2.25rem]">
-                  Event Management
+                  Event Planning
                 </h1>
+                <button
+                  onClick={() => {
+                    resetEventForm();
+                    setShowEventForm(!showEventForm);
+                  }}
+                  className="mt-2 flex items-center gap-2 rounded-full bg-[#5b3df5] px-6 py-2.5 text-[14px] font-bold text-white shadow-lg transition-transform hover:scale-105"
+                >
+                  <Plus className="h-4 w-4" />
+                  {showEventForm ? "Close Form" : "Add New Event"}
+                </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <div className="flex h-[44px] flex-1 min-w-[240px] items-center gap-2 rounded-full bg-[#f4f5f8] px-3 ring-1 ring-[#eceff4] sm:h-[48px] sm:gap-3 sm:px-4">
+                <div className="flex h-[44px] min-w-[240px] flex-1 items-center gap-2 rounded-full bg-[#f4f5f8] px-3 ring-1 ring-[#eceff4] sm:h-[48px] sm:gap-3 sm:px-4">
                   <Search className="h-3.5 w-3.5 text-[#9aa2b0] sm:h-4 sm:w-4" />
                   <input
                     className="w-full bg-transparent text-[12px] text-[#48505f] outline-none placeholder:text-[#b0b6c2] sm:text-[13px] md:text-[14px]"
@@ -3828,358 +5694,1541 @@ function EventsPage({ onLogout, onNavigate, activePage, showSettingsPage, setSho
                   />
                 </div>
 
-              <div className="flex items-center gap-3 sm:gap-4">
-                <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-sm ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
-                </button>
-                <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                  <img
-                    src={saran}
-                    alt="Sarankumar R"
-                    className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                  />
-                  <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-sm ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
+                    <Bell className="h-5 w-5" />
+                    <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:right-3.5 sm:top-3.5"></span>
+                  </button>
+
+                <AdminHeader adminUser={adminUser} />
+
+                  
                 </div>
-              </div>
               </div>
             </div>
 
-            <div className="mt-5 rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:mt-6 sm:p-5 md:p-6">
-              <div className="flex flex-col gap-6 lg:flex-row">
-                <div className="flex-1">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="inline-flex items-center gap-2 text-[1.2rem] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[1.3rem] md:text-[1.4rem]">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#ede9ff] text-[#5b3df5] text-[14px] sm:h-6 sm:w-6">
-                        +
-                      </span>
-                      Plan New Event
-                    </div>
+            {showEventForm && eventStep === 1 && (
+              <>
+                <div className="mt-6 rounded-[30px] bg-white p-5 shadow-[0_10px_30px_rgba(25,30,60,0.04)] ring-1 ring-[#eceff5] sm:p-6 md:p-8">
+                  <div className="mb-6">
+                    <h2 className="text-[1.15rem] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[1.3rem]">
+                      1. Event Details
+                    </h2>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 md:grid-cols-2">
+                  <div className="grid gap-5 md:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
                         Event Name
                       </label>
                       <input
                         type="text"
-                        value={eventForm.name}
-                        onChange={(e) => handleEventChange("name", e.target.value)}
-                        placeholder="e.g. Annual Tech Summit 2024"
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
+                        value={eventForm.eventName}
+                        onChange={(e) =>
+                          handleEventChange("eventName", e.target.value)
+                        }
+                        placeholder="Enter event name"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
-                        Vertical Category
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Vertical
                       </label>
                       <select
-                        value={eventForm.category}
-                        onChange={(e) => handleEventChange("category", e.target.value)}
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
+                        value={eventForm.vertical}
+                        onChange={(e) =>
+                          handleEventChange("vertical", e.target.value)
+                        }
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       >
-                        <option>Management</option>
-                        <option>Training</option>
-                        <option>Business</option>
-                        <option>Community Development</option>
-                        <option>Public Relationship & Marketing</option>
-                        <option>Growth & Development</option>
-                        <option>Internationalism</option>
-                        <option>Junior Jaycee</option>
-                        <option>Lady Jaycee</option>
+                        {verticalOptions.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
+
+{eventForm.vertical === "Management" && (
+  <div>
+    <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+      ID Type
+    </label>
+    <select
+      value={eventForm.idType}
+      onChange={(e) => handleEventChange("idType", e.target.value)}
+      className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+    >
+      <option value="">Select ID Type</option>
+      {managementIdTypeOptions.map((item) => (
+        <option key={item} value={item}>
+          {item}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
+
+
                     <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
-                        Venue / Platform
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        value={eventForm.date}
+                        min={new Date().toISOString().split("T")[0]}
+                        onChange={(e) =>
+                          handleEventChange("date", e.target.value)
+                        }
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Time
+                      </label>
+                      <input
+                        type="time"
+                        value={eventForm.time}
+                        onChange={(e) =>
+                          handleEventChange("time", e.target.value)
+                        }
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Program
+                      </label>
+                      <input
+                        type="text"
+                        value={eventForm.program}
+                        onChange={(e) =>
+                          handleEventChange("program", e.target.value)
+                        }
+                        placeholder="Enter program name"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Venue
                       </label>
                       <input
                         type="text"
                         value={eventForm.venue}
-                        onChange={(e) => handleEventChange("venue", e.target.value)}
+                        onChange={(e) =>
+                          handleEventChange("venue", e.target.value)
+                        }
                         placeholder="Grand Hyatt or Zoom Link"
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
-                        Location
-                      </label>
-                      <input
-                        type="text"
-                        value={eventForm.location}
-                        onChange={(e) => handleEventChange("location", e.target.value)}
-                        placeholder="e.g. Madurai, Tamil Nadu"
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
-                        Date &amp; Time
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={eventForm.dateTime}
-                        onChange={(e) => handleEventChange("dateTime", e.target.value)}
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
                         Chief Guest
                       </label>
                       <input
                         type="text"
                         value={eventForm.chiefGuest}
-                        onChange={(e) => handleEventChange("chiefGuest", e.target.value)}
-                        placeholder="Dr. Elena Vance"
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
+                        onChange={(e) =>
+                          handleEventChange("chiefGuest", e.target.value)
+                        }
+                        placeholder="Enter chief guest name"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
                         Guest of Honor
                       </label>
                       <input
                         type="text"
                         value={eventForm.guestOfHonor}
-                        onChange={(e) => handleEventChange("guestOfHonor", e.target.value)}
-                        placeholder="Marc Benioff"
-                        className="h-[46px] w-full rounded-2xl bg-[#f5f6f8] px-3 text-[13px] text-[#495160] outline-none sm:h-[50px] sm:px-4 sm:text-[14px] md:h-[52px]"
+                        onChange={(e) =>
+                          handleEventChange("guestOfHonor", e.target.value)
+                        }
+                        placeholder="Enter guest of honor name"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       />
                     </div>
-                  </div>
 
-                  <div className="mt-4 sm:mt-5">
-                    <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:mb-2 sm:text-[11px]">
-                      Event Banner
-                    </label>
-
-                    <label className="flex h-[120px] cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d9dee8] bg-[#fcfcfd] text-center transition hover:bg-[#f8f8fc] sm:h-[130px] md:h-[148px]">
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Faculty / Keynote Speaker
+                      </label>
                       <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/jpg"
-                        className="hidden"
-                        onChange={handleBannerChange}
+                        type="text"
+                        value={eventForm.facultySpeaker}
+                        onChange={(e) =>
+                          handleEventChange("facultySpeaker", e.target.value)
+                        }
+                        placeholder="Enter faculty or keynote speaker"
+                        className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
                       />
-                      {bannerPreview ? (
-                        <img
-                          src={bannerPreview}
-                          alt="Event Banner Preview"
-                          className="h-full w-full rounded-[24px] object-cover"
-                        />
-                      ) : (
-                        <>
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f6f8] text-[#606978] sm:h-10 sm:w-10 md:h-11 md:w-11">
-                            <Upload className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
-                          </div>
-                          <p className="mt-2 text-[12px] font-semibold text-[#2f3644] sm:mt-2.5 sm:text-[13px] md:mt-3 md:text-[14px]">
-                            Click or drag banner to upload
-                          </p>
-                          <p className="mt-1 text-[10px] text-[#9aa2b0] sm:text-[11px] md:text-[12px]">
-                            Optimal size 1920×1080 (PNG, JPG)
-                          </p>
-                          {bannerFile && (
-                            <p className="mt-1 text-[11px] font-medium text-[#5b3df5] sm:mt-2 sm:text-[12px]">
-                              {bannerFile.name}
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </label>
-                  </div>
+                    </div>
 
+                    <div className="md:col-span-2 flex items-center justify-between p-4 rounded-2xl border border-[#e6eaf2] bg-[#f8fafc]">
+                      <div>
+                        <p className="text-[14px] font-bold text-[#1f2430]">Public Event</p>
+                        <p className="text-[12px] text-[#64748b]">If enabled, this event will be visible to all users in the mobile app.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleEventChange("isPublic", !eventForm.isPublic)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                          eventForm.isPublic ? "bg-[#5b3df5]" : "bg-[#cbd5e1]"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            eventForm.isPublic ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+
+
+
+
+<div>
+  <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+    Chief Guest ID
+  </label>
+  <input
+    type="text"
+    value={eventForm.chiefGuestId}
+    onChange={(e) => handleEventChange("chiefGuestId", e.target.value)}
+    placeholder="Enter chief guest ID number"
+    className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+  />
+</div>
+
+<div>
+  <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+    Guest of Honor ID
+  </label>
+  <input
+    type="text"
+    value={eventForm.guestOfHonorId}
+    onChange={(e) => handleEventChange("guestOfHonorId", e.target.value)}
+    placeholder="Enter guest of honor ID number"
+    className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+  />
+</div>
+
+
+<div>
+  <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+    Zone / National Person
+  </label>
+  <input
+    type="text"
+    value={eventForm.zoneNationalPerson}
+    onChange={(e) => handleEventChange("zoneNationalPerson", e.target.value)}
+    placeholder="Enter zone or national person"
+    className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+  />
+</div>
+
+<div className="md:col-span-2">
+  <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+    Event Overview
+  </label>
+  <textarea
+    value={eventForm.eventOverview}
+    onChange={(e) => handleEventChange("eventOverview", e.target.value)}
+    placeholder="Enter event overview"
+    rows={4}
+    className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+  />
+</div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Event Banner
+                      </label>
+
+                      <label className="flex min-h-[190px] cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-[#d8dde8] bg-[#fbfcfe] px-6 py-8 text-center transition hover:border-[#5b3df5]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          className="hidden"
+                          onChange={handleBannerUpload}
+                        />
+
+                        {bannerPreview ? (
+                          <img
+                            src={bannerPreview}
+                            alt="Event Banner Preview"
+                            className="max-h-[260px] w-full rounded-[20px] object-cover"
+                          />
+                        ) : (
+                          <>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f2f4f8] text-[#5f6778]">
+                              <Upload className="h-5 w-5" />
+                            </div>
+                            <p className="mt-3 text-[14px] font-semibold text-[#1f2430]">
+                              Upload Event Banner
+                            </p>
+                            <p className="mt-1 text-[12px] text-[#6b7280]">
+                              Exactly 1920 × 1080 px
+                            </p>
+                          </>
+                        )}
+                      </label>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Event Invitation
+                      </label>
+
+                      <label className="flex min-h-[190px] cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-[#d8dde8] bg-[#fbfcfe] px-6 py-8 text-center transition hover:border-[#5b3df5]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,application/pdf"
+                          className="hidden"
+                          onChange={handleInvitationUpload}
+                        />
+
+                        {invitationPreview ? (
+                          <img
+                            src={invitationPreview}
+                            alt="Event Invitation Preview"
+                            className="max-h-[260px] w-full rounded-[20px] object-contain"
+                          />
+                        ) : (
+                          <>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f2f4f8] text-[#5f6778]">
+                              <Upload className="h-5 w-5" />
+                            </div>
+                            <p className="mt-3 text-[14px] font-semibold text-[#1f2430]">
+                              Upload Event Invitation
+                            </p>
+                            <p className="mt-1 text-[12px] text-[#6b7280]">
+                              Portrait format
+                            </p>
+                          </>
+                        )}
+                      </label>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+                        Event Gallery (Max 6)
+                      </label>
+
+                      <label className="flex min-h-[190px] cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-[#d8dde8] bg-[#fbfcfe] px-6 py-8 text-center transition hover:border-[#5b3df5]">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleEventGalleryUpload}
+                        />
+
+                        {eventForm.eventGallery && eventForm.eventGallery.length > 0 ? (
+                          <div className="grid w-full grid-cols-2 gap-4 sm:grid-cols-3">
+                            {eventForm.eventGallery.map((img, idx) => (
+                              <div key={idx} className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#eceff5]">
+                                <img
+                                  src={img}
+                                  alt={`Gallery ${idx + 1}`}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f2f4f8] text-[#5f6778]">
+                              <ImagePlus className="h-5 w-5" />
+                            </div>
+                            <p className="mt-3 text-[14px] font-semibold text-[#1f2430]">
+                              Upload Gallery Images
+                            </p>
+                            <p className="mt-1 text-[12px] text-[#6b7280]">
+                              Up to 6 action photos
+                            </p>
+                          </>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 flex items-center justify-end">
                   <button
-                    onClick={handleCreateEvent}
-                    className="mt-5 flex h-[48px] w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#5b3df5] to-[#6c40f6] px-5 text-[13px] font-semibold text-white shadow-[0_18px_30px_rgba(91,61,245,0.22)] sm:mt-6 sm:h-[52px] sm:text-[14px] md:h-[54px]"
+                    type="button"
+                    onClick={goToEventStep2}
+                    className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-8 py-3 text-[14px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)]"
                   >
-                    Create New Event
-                    <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    Next
                   </button>
                 </div>
 
-                <div className="space-y-4 sm:space-y-5">
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    <div className="rounded-[24px] bg-[#f8f9fb] px-4 py-3 ring-1 ring-[#eff1f5] sm:px-5 sm:py-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:text-[11px]">
-                        Live Now
-                      </p>
-                      <p className="mt-1 text-[1.6rem] font-bold leading-none tracking-[-0.04em] text-[#5b3df5] sm:mt-2 sm:text-[1.8rem] md:text-[2rem] lg:text-[2.2rem]">
-                        02
-                      </p>
-                    </div>
+              </>
+            )}
 
-                    <div className="rounded-[24px] bg-[#f8f9fb] px-4 py-3 ring-1 ring-[#eff1f5] sm:px-5 sm:py-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9ca3af] sm:text-[11px]">
-                        This Month
-                      </p>
-                      <p className="mt-1 text-[1.6rem] font-bold leading-none tracking-[-0.04em] text-[#1f2430] sm:mt-2 sm:text-[1.8rem] md:text-[2rem] lg:text-[2.2rem]">
-                        14
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[28px] bg-[#f8f9fb] p-4 ring-1 ring-[#eff1f5] sm:p-5">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-[1rem] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[1.1rem] md:text-[1.15rem]">
-                        Highlights
-                      </h3>
-                      <Sparkles className="h-3.5 w-3.5 text-[#7c68ff] sm:h-4 sm:w-4" />
-                    </div>
-
-                    <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-4">
-                      <div className="flex gap-2 sm:gap-3">
-                        <img
-                          src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80"
-                          alt="summit"
-                          className="h-12 w-12 rounded-2xl object-cover sm:h-13 sm:w-13 md:h-14 md:w-14"
-                        />
-                        <div>
-                          <p className="text-[11px] font-bold leading-5 text-[#2f3644] sm:text-[12px] md:text-[13px]">
-                            TOP ATTENDED
-                            <br />
-                            Global AI Summit 2023
-                          </p>
-                          <p className="mt-1 text-[10px] text-[#8b92a1] sm:text-[11px] md:text-[12px]">1,240 Registrations</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 sm:gap-3">
-                        <img
-                          src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=200&q=80"
-                          alt="shared"
-                          className="h-12 w-12 rounded-2xl object-cover sm:h-13 sm:w-13 md:h-14 md:w-14"
-                        />
-                        <div>
-                          <p className="text-[11px] font-bold leading-5 text-[#2f3644] sm:text-[12px] md:text-[13px]">
-                            MOST SHARED
-                            <br />
-                            Summer Founders Gala
-                          </p>
-                          <p className="mt-1 text-[10px] text-[#8b92a1] sm:text-[11px] md:text-[12px]">450 Photos Uploaded</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button className="mt-4 text-[11px] font-semibold text-[#4b5563] sm:mt-5 sm:text-[12px] md:text-[13px]">
-                      View History Report ↗
-                    </button>
-                  </div>
+            {showEventForm && eventStep === 2 && (
+              <div className="mt-6 rounded-[30px] bg-white p-5 shadow-[0_10px_30px_rgba(25,30,60,0.04)] ring-1 ring-[#eceff5] sm:p-6 md:p-8">
+                <div className="mb-6">
+                  <h2 className="text-[1.15rem] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[1.3rem]">
+                    2. Agenda Details
+                  </h2>
                 </div>
+
+                <p className="mt-2 text-[13px] text-[#6b7280] sm:text-[14px]">
+  {eventForm.vertical === "Management"
+    ? `Management Agenda • ID Type: ${eventForm.idType || "Not selected"}`
+    : "Fill agenda details for the selected event."}
+</p>
+
+               <div className="grid gap-5 md:grid-cols-2">
+  {eventForm.vertical === "Management" ? (
+    <>
+
+
+      <div className="md:col-span-2 rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-6 sm:p-8">
+  <h3 className="text-[1.6rem] font-bold tracking-[-0.03em] text-[#111827]">
+    {eventForm.idType || "LGB"} AGENDA
+  </h3>
+
+  <div className="mt-8 space-y-3 text-[15px] leading-8 text-[#111827] sm:text-[16px]">
+    <div className="flex flex-wrap items-center gap-2">
+      <span>LO Governing Board Meeting Information from the office of the Secretary :</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.officeSecretary || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("officeSecretary", e.target.value)
+        }
+        placeholder="Enter secretary name"
+        className="min-w-[220px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+      <span>To JFS/ JCI PPP/ JCI.Sen/ JFP/ JFM/ Jc.HGF./</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.officeRecipient || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("officeRecipient", e.target.value)
+        }
+        placeholder="Enter recipient name"
+        className="min-w-[220px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+      <span>Notice is hereby given that</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.noticeMeetingName || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("noticeMeetingName", e.target.value)
+        }
+        placeholder="Enter meeting title"
+        className="min-w-[260px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+      <span>will be on</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.noticeDateTime || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("noticeDateTime", e.target.value)
+        }
+        placeholder="Enter date & time"
+        className="min-w-[260px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+      <span>at</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.noticeVenue || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("noticeVenue", e.target.value)
+        }
+        placeholder="Enter venue"
+        className="min-w-[260px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+      <span>Host :</span>
+      <input
+        type="text"
+        value={eventForm.managementAgenda.hostInfo || ""}
+        onChange={(e) =>
+          handleManagementAgendaChange("hostInfo", e.target.value)
+        }
+        placeholder="Enter host details"
+        className="min-w-[320px] flex-1 border-b-2 border-red-400 bg-transparent px-1 py-1 font-semibold text-red-600 outline-none"
+      />
+    </div>
+  </div>
+</div>
+
+
+      {[
+  ["item1", "1. Meeting Call to Order [1 Min]"],
+  ["item2", "2. JCI Creed [1 Min]"],
+  ["item3", "3. Welcome Address [2 Min]"],
+  ["item4", "4. Recognitions [2 Min]"],
+  ["item5", "5. Roll Call [2 Min]"],
+  ["item6", "6. Establishment of Quorum [1 Min]"],
+].map(([key, label]) => (
+  <div key={key}>
+    <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+      {label}
+    </label>
+    <input
+      type="text"
+      value={eventForm.managementAgenda[key]}
+      onChange={(e) => handleManagementAgendaChange(key, e.target.value)}
+      placeholder="Enter details"
+      className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+    />
+  </div>
+))}
+
+
+      <div className="md:col-span-2">
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          7. Adoption of Agenda [5 Min]
+        </label>
+        <textarea
+          value={eventForm.managementAgenda.item7Main}
+          onChange={(e) =>
+            handleManagementAgendaChange("item7Main", e.target.value)
+          }
+          placeholder="Text Box Big"
+          rows={4}
+          className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        />
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <input
+            type="text"
+            value={eventForm.managementAgenda.item7MovedBy}
+            onChange={(e) =>
+              handleManagementAgendaChange("item7MovedBy", e.target.value)
+            }
+            placeholder="Moved By"
+            className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+          />
+          <input
+            type="text"
+            value={eventForm.managementAgenda.item7SecondedBy}
+            onChange={(e) =>
+              handleManagementAgendaChange("item7SecondedBy", e.target.value)
+            }
+            placeholder="Seconded By"
+            className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+          />
+        </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          8. Minutes of Previous Meeting [5 Min]
+        </label>
+        <textarea
+          value={eventForm.managementAgenda.item8Main}
+          onChange={(e) =>
+            handleManagementAgendaChange("item8Main", e.target.value)
+          }
+          placeholder="Text Box Big"
+          rows={4}
+          className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        />
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <input
+            type="text"
+            value={eventForm.managementAgenda.item8MovedBy}
+            onChange={(e) =>
+              handleManagementAgendaChange("item8MovedBy", e.target.value)
+            }
+            placeholder="Moved By"
+            className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+          />
+          <input
+            type="text"
+            value={eventForm.managementAgenda.item8SecondedBy}
+            onChange={(e) =>
+              handleManagementAgendaChange("item8SecondedBy", e.target.value)
+            }
+            placeholder="Seconded By"
+            className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+          />
+        </div>
+      </div>
+
+
+       {[
+  ["item9", "9. Matters arising out of Minutes [8 Min]"],
+  ["item10", "10. Zone & National Correspondence [2 Min]"],
+  ["item11", "11. Reports of VP's Secretary"],
+  ["item12", "12. Approval of New Application [5 Min]"],
+  ["item13", "13. JCI India Subscription [2 Min]"],
+  ["item14", "14. House Bulletin TALENT [5 Min]"],
+  ["item15", "15. Vision 50 [2 Min]"],
+].map(([key, label]) => (
+  <div key={key}>
+    <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+      {label}
+    </label>
+    <input
+      type="text"
+      value={eventForm.managementAgenda[key]}
+      onChange={(e) => handleManagementAgendaChange(key, e.target.value)}
+      placeholder="Enter details"
+      className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+    />
+  </div>
+))}
+
+     <div className="md:col-span-2">
+  <div className="mb-3 flex items-center justify-between">
+    <label className="block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+      16. Other Subjects for Discussion [30 Min]
+    </label>
+
+    <button
+      type="button"
+      onClick={addOtherSubjectField}
+      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#5b3df5] text-white shadow-[0_10px_20px_rgba(91,61,245,0.25)]"
+    >
+      +
+    </button>
+  </div>
+
+ 
+
+
+  {(eventForm.managementAgenda.otherSubjects || []).length === 0 ? (
+    <div className="rounded-2xl border border-dashed border-[#d7dbe4] bg-[#fafbff] px-4 py-6 text-[14px] text-[#7b8494]">
+      No subjects added yet. Click + to add.
+    </div>
+  ) : (
+    <div className="grid gap-4 md:grid-cols-2">
+      {(eventForm.managementAgenda.otherSubjects || []).map((item, index) => (
+        <div key={index} className="relative">
+          <textarea
+            value={item}
+            onChange={(e) => updateOtherSubjectField(index, e.target.value)}
+            placeholder={`Subject ${index + 1}`}
+            rows={3}
+            className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 pr-14 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+          />
+
+          <button
+            type="button"
+            onClick={() => removeOtherSubjectField(index)}
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+{[
+  ["item17", "17. IPP's Address [2 Min]"],
+  ["item18", "18. Programs for ensuring month [1 Min]"],
+  ["item19", "19. Next LGB Meeting [1 Min]"],
+  ["item20", "20. Announcements & Vote of Thanks [2 Min]"],
+  ["item21", "21. Adjournment [1 Min]"],
+].map(([key, label]) => (
+  <div key={key}>
+    <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+      {label}
+    </label>
+    <input
+      type="text"
+      value={eventForm.managementAgenda[key]}
+      onChange={(e) => handleManagementAgendaChange(key, e.target.value)}
+      placeholder="Enter details"
+      className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+    />
+  </div>
+))}
+
+      <div>
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          Name of the Secretary
+        </label>
+        <input
+          type="text"
+          value={eventForm.secretaryName}
+          onChange={(e) =>
+            handleEventChange("secretaryName", e.target.value)
+          }
+          placeholder="Enter secretary name"
+          className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          Person : Secretary / Acting Secretary
+        </label>
+        <select
+          value={eventForm.secretaryPerson}
+          onChange={(e) =>
+            handleEventChange("secretaryPerson", e.target.value)
+          }
+          className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        >
+          <option value="Secretary">Secretary</option>
+          <option value="Acting Secretary">Acting Secretary</option>
+        </select>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          Signature
+        </label>
+
+        <label className="flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d8dde8] bg-[#fbfcfe] px-6 py-6 text-center transition hover:border-[#5b3df5]">
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg"
+            className="hidden"
+            onChange={handleSignatureUpload}
+          />
+
+          {signaturePreview ? (
+            <img
+              src={signaturePreview}
+              alt="Signature Preview"
+              className="max-h-[100px] w-full rounded-[16px] object-contain"
+            />
+          ) : (
+            <>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f2f4f8] text-[#5f6778]">
+                <Upload className="h-5 w-5" />
+              </div>
+              <p className="mt-3 text-[14px] font-semibold text-[#1f2430]">
+                Upload Signature
+              </p>
+            </>
+          )}
+        </label>
+      </div>
+    </>
+  ) : (
+    <>
+      {eventForm.agendaItems.map((item, index) => (
+        <div key={index}>
+          <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+            {index + 1}. {agendaLabels[index]}
+          </label>
+
+          <input
+            type="text"
+            value={item}
+            onChange={(e) => handleAgendaChange(index, e.target.value)}
+            placeholder="Enter details"
+            className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none placeholder:text-[#b0b6c2] focus:border-[#5b3df5]"
+          />
+        </div>
+      ))}
+
+      <div>
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          15. Name of the Secretary
+        </label>
+        <input
+          type="text"
+          value={eventForm.secretaryName}
+          onChange={(e) =>
+            handleEventChange("secretaryName", e.target.value)
+          }
+          placeholder="Enter secretary name"
+          className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          16. Signature
+        </label>
+
+        <label className="flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d8dde8] bg-[#fbfcfe] px-6 py-6 text-center transition hover:border-[#5b3df5]">
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg"
+            className="hidden"
+            onChange={handleSignatureUpload}
+          />
+
+          {signaturePreview ? (
+            <img
+              src={signaturePreview}
+              alt="Signature Preview"
+              className="max-h-[100px] w-full rounded-[16px] object-contain"
+            />
+          ) : (
+            <>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f2f4f8] text-[#5f6778]">
+                <Upload className="h-5 w-5" />
+              </div>
+              <p className="mt-3 text-[14px] font-semibold text-[#1f2430]">
+                Upload Signature
+              </p>
+            </>
+          )}
+        </label>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]">
+          17. Person : Secretary / Acting Secretary
+        </label>
+        <select
+          value={eventForm.secretaryPerson}
+          onChange={(e) =>
+            handleEventChange("secretaryPerson", e.target.value)
+          }
+          className="h-[54px] w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+        >
+          <option value="Secretary">Secretary</option>
+          <option value="Acting Secretary">Acting Secretary</option>
+        </select>
+      </div>
+    </>
+  )}
+</div>
+
+
+
+              <div className="mt-8 flex items-center justify-between gap-3">
+  <button
+    type="button"
+    onClick={backToEventStep1}
+    className="rounded-full border border-[#d9deea] bg-white px-8 py-3 text-[14px] font-semibold text-[#4b5563]"
+  >
+    Back
+  </button>
+
+  <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={goToEventStep3}
+      className="rounded-full border border-[#5b3df5] bg-white px-8 py-3 text-[14px] font-semibold text-[#5b3df5]"
+    >
+      Preview
+    </button>
+
+    <button
+      type="button"
+      onClick={handleCreateEvent}
+      disabled={eventsSaving}
+      className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-8 py-3 text-[14px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)] disabled:opacity-60"
+    >
+      {eventsSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
+    </button>
+  </div>
+</div>
+
+              </div>
+            )}
+
+       {showEventForm && eventStep === 3 && (
+  <div className="mt-6 rounded-[30px] bg-white p-5 shadow-[0_10px_30px_rgba(25,30,60,0.04)] ring-1 ring-[#eceff5] sm:p-6 md:p-8">
+    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 className="text-[1.15rem] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[1.3rem]">
+          3. Preview Details
+        </h2>
+        <p className="mt-2 text-[13px] text-[#6b7280] sm:text-[14px]">
+          Review all event details before creating the event.
+        </p>
+      </div>
+    </div>
+
+    <div className="rounded-[28px] border border-[#e6eaf2] bg-[#fafbff] p-5 sm:p-6 md:p-8">
+      <div className="grid gap-5 md:grid-cols-2">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Event Name
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.eventName || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Vertical
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.vertical || "Not added"}
+          </div>
+        </div>
+
+        {eventForm.vertical === "Management" && (
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+              ID Type
+            </p>
+            <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+              {eventForm.idType || "Not added"}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Date
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.date || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Time
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.time || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Program
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.program || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Venue
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.venue || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Chief Guest
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.chiefGuest || "Optional / Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Guest of Honor
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.guestOfHonor || "Optional / Not added"}
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Faculty / Keynote Speaker
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.facultySpeaker || "Optional / Not added"}
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Event Overview
+          </p>
+          <div className="mt-2 min-h-[120px] rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] leading-7 text-[#1f2430]">
+            {eventForm.eventOverview || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Secretary Name
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.secretaryName || "Not added"}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Secretary Type
+          </p>
+          <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-4 text-[15px] font-semibold text-[#1f2430]">
+            {eventForm.secretaryPerson || "Not added"}
+          </div>
+        </div>
+
+        {eventForm.vertical === "Management" ? (
+          <div className="md:col-span-2">
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+              Management Agenda Preview
+            </p>
+            <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-5 text-[15px] leading-8 text-[#1f2430]">
+              <p><span className="font-semibold">Agenda Type:</span> {eventForm.idType || "Not added"}</p>
+              <p><span className="font-semibold">Office Secretary:</span> {eventForm.managementAgenda.officeSecretary || "Not added"}</p>
+              <p><span className="font-semibold">Office Recipient:</span> {eventForm.managementAgenda.officeRecipient || "Not added"}</p>
+              <p><span className="font-semibold">Meeting Name:</span> {eventForm.managementAgenda.noticeMeetingName || "Not added"}</p>
+              <p><span className="font-semibold">Date & Time Text:</span> {eventForm.managementAgenda.noticeDateTime || "Not added"}</p>
+              <p><span className="font-semibold">Venue Text:</span> {eventForm.managementAgenda.noticeVenue || "Not added"}</p>
+              <p><span className="font-semibold">Host:</span> {eventForm.managementAgenda.hostInfo || "Not added"}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="md:col-span-2">
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+              Agenda Preview
+            </p>
+            <div className="mt-2 rounded-2xl border border-[#e6eaf2] bg-white px-4 py-5 text-[15px] leading-8 text-[#1f2430]">
+              {eventForm.agendaItems.some((item) => item.trim()) ? (
+                <ul className="space-y-2">
+                  {eventForm.agendaItems.map((item, index) => (
+                    <li key={index}>
+                      <span className="font-semibold">{index + 1}. {agendaLabels[index]}:</span>{" "}
+                      {item || "Not added"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                "No agenda details added"
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="md:col-span-2">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7b8494]">
+            Media Preview
+          </p>
+          <div className="mt-3 grid gap-6 sm:grid-cols-2">
+            {bannerPreview && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold text-[#6b7280]">EVENT BANNER</p>
+                <img src={bannerPreview} alt="Banner" className="h-[200px] w-full rounded-2xl object-cover ring-1 ring-[#e6eaf2]" />
+              </div>
+            )}
+            {invitationPreview && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold text-[#6b7280]">EVENT INVITATION</p>
+                <img src={invitationPreview} alt="Invitation" className="h-[200px] w-full rounded-2xl object-contain ring-1 ring-[#e6eaf2]" />
+              </div>
+            )}
+          </div>
+          
+          {eventForm.eventGallery && eventForm.eventGallery.length > 0 && (
+            <div className="mt-6 space-y-2">
+              <p className="text-[11px] font-bold text-[#6b7280]">EVENT GALLERY</p>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                {eventForm.eventGallery.map((img, idx) => (
+                  <img key={idx} src={img} alt="Gallery" className="aspect-square w-full rounded-xl object-cover ring-1 ring-[#e6eaf2]" />
+                ))}
               </div>
             </div>
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div className="mt-8 flex items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={backToEventStep2}
+        className="rounded-full border border-[#d9deea] bg-white px-8 py-3 text-[14px] font-semibold text-[#4b5563]"
+      >
+        Back
+      </button>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setEventStep(2)}
+          className="rounded-full border border-[#5b3df5] bg-white px-8 py-3 text-[14px] font-semibold text-[#5b3df5]"
+        >
+          Edit
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCreateEvent}
+          disabled={eventsSaving}
+          className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-8 py-3 text-[14px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)] disabled:opacity-60"
+        >
+          {eventsSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+            
+          </div>
 
             <section className="mt-6 sm:mt-7 md:mt-8">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-[1.5rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.8rem] md:text-[2rem]">
-                      Active Schedule
-                    </h2>
-                    {eventCategoryFilter !== "All" && (
-                      <button 
-                        onClick={() => setEventCategoryFilter("All")}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#f1edff] px-3 py-1 text-[11px] font-bold text-[#5b3df5] transition hover:bg-[#e6e0ff]"
-                      >
-                        {eventCategoryFilter} <span className="text-[14px]">×</span>
-                      </button>
-                    )}
+              <div className="flex items-center justify-between">
+                <h2 className="text-[1.25rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.4rem] md:text-[1.55rem]">
+                  Active Schedule
+                </h2>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"></span>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">
+                    Live Events
+                  </span>
+                </div>
+              </div>
+
+              {eventsLoading ? (
+                <div className="mt-6 flex flex-col items-center justify-center rounded-[30px] border border-[#e6eaf2] bg-white py-12 text-center shadow-[0_10px_30px_rgba(25,30,60,0.04)] sm:py-16">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#5b3df5] border-t-transparent"></div>
+                  <p className="mt-4 font-semibold text-[#1f2430]">Loading events...</p>
+                </div>
+              ) : liveEvents.length === 0 ? (
+                <div className="mt-6 rounded-[30px] border border-dashed border-[#d8dde8] bg-[#f8faff] py-12 text-center sm:py-16">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#8b92a1] shadow-sm">
+                    <CalendarDays className="h-7 w-7" />
                   </div>
-                  <p className="mt-1 text-[12px] text-[#8b92a1] sm:text-[13px] md:text-[14px]">
-                    Manage ongoing and upcoming events in your directory.
+                  <h3 className="mt-5 text-[1.1rem] font-bold text-[#1f2430]">
+                    No events found
+                  </h3>
+                  <p className="mt-1 text-[13px] text-[#6b7280]">
+                    There are no upcoming events in this category yet.
                   </p>
                 </div>
+              ) : (
+                <div className="mt-6 grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
+                  {liveEvents.map((event) => (
+                    <div
+                      key={event._id}
+                      className="group relative flex flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_10px_30px_rgba(25,30,60,0.04)] ring-1 ring-[#eceff5] transition-all hover:shadow-[0_20px_45px_rgba(25,30,60,0.08)]"
+                    >
+                      <div className="relative h-[160px] w-full overflow-hidden sm:h-[180px]">
+                        <img
+                          src={event.banner || "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=1000&auto=format&fit=crop"}
+                          alt={event.eventName}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#00000088] to-transparent" />
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-md">
+                            {event.vertical}
+                          </span>
+                        </div>
+                      </div>
 
-                <div className="inline-flex rounded-full bg-[#f3f4f6] p-1 ring-1 ring-[#ebeef3]">
-                  <button className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-[#1f2430] shadow-sm sm:px-4 sm:py-2 sm:text-[12px]">
-                    Grid
-                  </button>
-                  <button className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-[#8b92a1] sm:px-4 sm:py-2 sm:text-[12px]">
-                    Timeline
+                      <div className="flex flex-1 flex-col p-5 sm:p-6">
+                        <div className="flex-1">
+                          <h3 className="text-[1.05rem] font-bold leading-tight tracking-[-0.02em] text-[#1f2430] sm:text-[1.15rem]">
+                            {event.eventName}
+                          </h3>
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center gap-2 text-[12px] text-[#6b7280]">
+                              <CalendarDays className="h-3.5 w-3.5 text-[#5b3df5]" />
+                              <span>{event.date} • {event.time}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[12px] text-[#6b7280]">
+                              <Users className="h-3.5 w-3.5 text-[#5b3df5]" />
+                              <span className="truncate">{event.chiefGuest || "No chief guest"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 flex flex-wrap items-center gap-2">
+                          <button 
+                            onClick={() => onNavigate("eventDetails", "All", event)}
+                            className="flex-1 rounded-full bg-[#f4f5f8] py-2.5 text-[12px] font-bold text-[#1f2430] transition hover:bg-[#edf0f5]"
+                          >
+                            View
+                          </button>
+                          <button 
+                             onClick={() => onNavigate("eventReport", "All", event)}
+                             className="flex-1 rounded-full bg-emerald-50 py-2.5 text-[12px] font-bold text-emerald-600 transition hover:bg-emerald-100"
+                          >
+                            event report
+                          </button>
+                        </div>
+                        <div className="mt-6 flex items-center justify-between border-t border-[#f1f3f9] pt-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleTogglePublic(event)}
+                              role="switch"
+                              aria-checked={Boolean(event.isPublic)}
+                              className={`flex h-9 items-center gap-2 rounded-full px-3 text-[11px] font-bold transition-all ${
+                                event.isPublic
+                                  ? "bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200"
+                                  : "bg-slate-50 text-slate-400 ring-1 ring-slate-200"
+                              }`}
+                            >
+                              <span className={`relative h-4 w-8 rounded-full transition-colors ${event.isPublic ? "bg-indigo-500" : "bg-slate-300"}`}>
+                                <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${event.isPublic ? "translate-x-4" : "translate-x-0.5"}`} />
+                              </span>
+                              {event.isPublic ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                              {event.isPublic ? "LIVE IN PORTAL" : "HIDDEN"}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button 
+                               onClick={() => handleEditClick(event)}
+                               className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f2efff] text-[#5b3df5] transition hover:bg-[#5b3df5] hover:text-white shadow-sm"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                            <button 
+                               onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event._id || event.id); }}
+                               className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-500 hover:text-white shadow-sm"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function EventDetailsPage({
+  event,
+  onNavigate,
+  onLogout,
+  activePage,
+  showSettingsPage,
+  setShowSettingsPage,
+}) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  if (!event) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5f7]">
+        <button
+          onClick={() => onNavigate("events")}
+          className="rounded-full bg-[#5b3df5] px-6 py-3 text-white"
+        >
+          Back to Events
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f4f5f7] text-[#1f2430]">
+      <div className="flex min-h-screen">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="fixed right-4 top-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          } sm:px-5 sm:py-6`}
+        >
+          <div className="flex h-full flex-col">
+            <div>
+              <SidebarBrand />
+
+              <nav className="mt-8 space-y-1 sm:mt-10 sm:space-y-2">
+                <SidebarItem
+                  icon={LayoutDashboard}
+                  label="Dashboard"
+                  active={activePage === "dashboard"}
+                  onClick={() => onNavigate("dashboard")}
+                />
+                <SidebarItem
+                  icon={Users}
+                  label="Members"
+                  active={activePage === "members"}
+                  onClick={() => onNavigate("members")}
+                />
+                <SidebarItem
+                  icon={FolderKanban}
+                  label={MEMBER_CLASSIFICATION_LABEL}
+                  active={activePage === "Memberclassification"}
+                  onClick={() => onNavigate("Memberclassification")}
+                />
+                <SidebarItem
+                  icon={CalendarDays}
+                  label="Events"
+                 active={
+  activePage === "events" ||
+  activePage === "eventDetails" ||
+  activePage === "eventReport"
+}
+                  onClick={() => onNavigate("events")}
+                />
+                <SidebarItem
+                  icon={BarChart3}
+                  label="Analytics"
+                  active={activePage === "analytics"}
+                  onClick={() => onNavigate("analytics")}
+                />
+              </nav>
+
+              <SettingsToggleBlock
+                activePage={activePage}
+                onNavigate={onNavigate}
+                showSettingsPage={showSettingsPage}
+                setShowSettingsPage={setShowSettingsPage}
+              />
+            </div>
+
+            <button
+              onClick={onLogout}
+              className="mt-auto rounded-full bg-red-500 px-4 py-3 text-[14px] font-semibold text-white shadow-[0_15px_30px_rgba(239,68,68,0.28)]"
+            >
+              Logout
+            </button>
+          </div>
+        </aside>
+
+        <main className="relative z-10 flex-1 bg-[#f5f7fb] px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-6 lg:px-8 lg:py-7">
+          <div className="mx-auto max-w-[1400px]">
+            <button
+              onClick={() => onNavigate("events")}
+              className="mb-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-[#5b3df5] shadow-sm ring-1 ring-[#eceff5]"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back to Events
+            </button>
+
+            <section className="overflow-hidden rounded-[34px] bg-white shadow-[0_20px_60px_rgba(25,30,60,0.08)] ring-1 ring-[#ebedf3]">
+              <div className="relative h-[260px] w-full sm:h-[320px] lg:h-[420px]">
+                <img
+                  src={event.image || event.banner}
+                  alt={event.title || event.eventName}
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0f172acc] via-[#0f172a66] to-transparent" />
+
+                <div className="absolute bottom-8 left-6 right-6 flex items-end justify-between">
+                  <h1 className="text-[2rem] font-bold tracking-[-0.05em] text-white sm:text-[2.5rem] lg:text-[3.25rem]">
+                    {event.eventName || event.title}
+                  </h1>
+                  <button
+                    onClick={() => onNavigate("eventReport", "All", event)}
+                    className="rounded-full bg-[#5b3df5] px-6 py-3 text-[14px] font-bold text-white shadow-lg transition hover:scale-105 active:scale-95"
+                  >
+                    {event.report ? "Edit Event Report" : "Create Event Report"}
                   </button>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {filteredCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className="overflow-hidden rounded-[26px] bg-white shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]"
-                  >
-                    <div className="relative">
+              <div className="p-6 sm:p-7 lg:p-8">
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Event Name
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.eventName || event.title || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Vertical
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.vertical || event.tag || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Date
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.date || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Time
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.time || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Program
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.program || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Venue
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.venue || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Chief Guest
+                    </p>
+                    <p className="mt-2 text-[16px] font-semibold text-[#1f2430]">
+                      {event.chiefGuest || "Not added"}
+                    </p>
+                    <p className="mt-1 text-[13px] text-[#6b7280]">
+                      ID: {event.chiefGuestId || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Guest of Honor
+                    </p>
+                    <p className="mt-2 text-[16px] font-semibold text-[#1f2430]">
+                      {event.guestOfHonor || "Not added"}
+                    </p>
+                    <p className="mt-1 text-[13px] text-[#6b7280]">
+                      ID: {event.guestOfHonorId || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Faculty / Keynote Speaker
+                    </p>
+                    <p className="mt-2 text-[16px] font-semibold text-[#1f2430]">
+                      {event.facultySpeaker || "Not added"}
+                    </p>
+                    <p className="mt-1 text-[13px] text-[#6b7280]">
+                      ID: {event.facultySpeakerId || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5 md:col-span-2 xl:col-span-3">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Zone / National Person
+                    </p>
+                    <p className="mt-2 text-[18px] font-semibold text-[#1f2430]">
+                      {event.zoneNationalPerson || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5 md:col-span-2 xl:col-span-3">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Event Overview
+                    </p>
+                    <p className="mt-3 text-[15px] leading-8 text-[#4f5666]">
+                      {event.eventOverview || event.description || "Not added"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5 md:col-span-2 xl:col-span-3">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Event Invitation
+                    </p>
+                    {event.invitation ? (
                       <img
-                        src={card.image}
-                        alt={card.title}
-                        className="h-[150px] w-full object-cover sm:h-[160px] md:h-[180px]"
+                        src={event.invitation}
+                        alt="Event Invitation"
+                        className="mt-4 max-h-[500px] rounded-[28px] object-contain ring-1 ring-[#eceff5]"
                       />
-                      <div className="absolute left-3 top-3 flex gap-2 sm:left-4 sm:top-4">
-                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] sm:px-3 sm:py-1 sm:text-[10px] ${card.statusClass}`}>
-                          {card.status}
-                        </span>
-                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] sm:px-3 sm:py-1 sm:text-[10px] ${card.tagClass}`}>
-                          {card.tag}
-                        </span>
+                    ) : (
+                      <p className="mt-3 text-[15px] text-[#6b7280]">No invitation uploaded</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eceff5] bg-[#fafbff] p-5 md:col-span-2 xl:col-span-3">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8b92a1]">
+                      Event Gallery
+                    </p>
+                    {event.eventGallery && event.eventGallery.length > 0 ? (
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {event.eventGallery.map((img, index) => (
+                          <img
+                            key={index}
+                            src={img}
+                            alt={`Gallery ${index + 1}`}
+                            className="h-[180px] w-full rounded-[22px] object-cover ring-1 ring-[#eceff5]"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-[15px] text-[#6b7280]">No gallery images added</p>
+                    )}
+                  </div>
+
+                  {event.report && (
+                    <div className="md:col-span-2 xl:col-span-3">
+                      <div className="mt-8 overflow-hidden rounded-[28px] border border-[#e5e7eb] bg-white">
+                        <div className="bg-[#f9fafb] px-6 py-4 border-b border-[#e5e7eb]">
+                          <h3 className="text-[1.1rem] font-bold text-[#111827]">Event Report Details</h3>
+                        </div>
+                        <div className="p-6">
+                           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                              <div>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">Total Attendance</p>
+                                <p className="mt-1 text-[15px] font-semibold text-[#111827]">{event.report.totalCount || "0"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">JCs Present</p>
+                                <p className="mt-1 text-[15px] font-semibold text-[#111827]">{event.report.jcsCount || "0"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">Family Members</p>
+                                <p className="mt-1 text-[15px] font-semibold text-[#111827]">{event.report.familyMembersCount || "0"}</p>
+                              </div>
+                              <div className="sm:col-span-2 lg:col-span-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">Report Overview</p>
+                                <p className="mt-2 text-[14px] leading-relaxed text-[#4b5563]">{event.report.eventOverview || "No overview provided."}</p>
+                              </div>
+                           </div>
+                           
+                           {event.report.reportImageGroup1 && event.report.reportImageGroup1.length > 0 && (
+                             <div className="mt-8">
+                               <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280] mb-3">Report Images</p>
+                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                                 {event.report.reportImageGroup1.map((img, i) => (
+                                   <img key={i} src={img} alt="Report" className="h-24 w-full rounded-xl object-cover ring-1 ring-[#e5e7eb]" />
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
                       </div>
                     </div>
-
-                    <div className="p-4 sm:p-5">
-                      <h3 className="text-[1.15rem] font-bold leading-7 tracking-[-0.03em] text-[#1f2430] sm:text-[1.25rem] md:text-[1.35rem]">
-                        {card.title}
-                      </h3>
-
-                      <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[#6f7787] sm:gap-2 sm:text-[12px] md:text-[13px]">
-                        <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                        {card.meta}
-                      </p>
-
-                      {card.avatars && (
-                        <div className="mt-4 flex items-center justify-between sm:mt-5">
-                          <div className="flex -space-x-1.5 sm:-space-x-2">
-                            {card.avatars.map((avatar, index) => (
-                              <img
-                                key={index}
-                                src={avatar}
-                                alt="attendee"
-                                className="h-6 w-6 rounded-full border-2 border-white object-cover sm:h-7 sm:w-7 md:h-8 md:w-8"
-                              />
-                            ))}
-                            <div className="flex h-6 min-w-[28px] items-center justify-center rounded-full border-2 border-white bg-[#f3f4f6] px-1.5 text-[10px] font-semibold text-[#667085] sm:h-7 sm:min-w-[32px] sm:px-2 sm:text-[11px] md:h-8">
-                              {card.extra}
-                            </div>
-                          </div>
-                          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5f6f8] text-[#4f5665] sm:h-9 sm:w-9 md:h-10 md:w-10">
-                            <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          </button>
-                        </div>
-                      )}
-
-                      {card.guest && (
-                        <div className="mt-4 flex items-center justify-between sm:mt-5">
-                          <p className="text-[10px] font-medium text-[#8b92a1] sm:text-[11px] md:text-[12px]">{card.guest}</p>
-                          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5f6f8] text-[#4f5665] sm:h-9 sm:w-9 md:h-10 md:w-10">
-                            <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          </button>
-                        </div>
-                      )}
-
-                      {card.capacity && (
-                        <div className="mt-4 flex items-center justify-between sm:mt-5">
-                          <p className="text-[10px] font-medium text-[#8b92a1] sm:text-[11px] md:text-[12px]">{card.capacity}</p>
-                          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5f6f8] text-[#4f5665] sm:h-9 sm:w-9 md:h-10 md:w-10">
-                            <MoreVertical className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             </section>
           </div>
@@ -4189,92 +7238,994 @@ function EventsPage({ onLogout, onNavigate, activePage, showSettingsPage, setSho
   );
 }
 
+function EventReportPage({
+  event,
+  onNavigate,
+  onLogout,
+  activePage,
+  showSettingsPage,
+  setShowSettingsPage,
+}) {
+  const [reportForm, setReportForm] = useState({
+    eventName: "",
+    vertical: "",
+    date: "",
+    time: "",
+    program: "",
+    venue: "",
+    eventOverview: "",
+    chiefGuestCount: "",
+    guestOfHonorCount: "",
+    facultyCount: "",
+    lgbMembersCount: "",
+    jcsCount: "",
+    familyMembersCount: "",
+    pastPresidentsCount: "",
+    chiefGuestId: "",
+    guestOfHonorId: "",
+    facultyId: "",
+    jacCount: "",
+    nonJcCount: "",
+    zoneNationalPersonCount: "",
+    zoneNationalPersonId: "",
+    totalCount: "",
+    beneficiaryCount: "",
+    description: "",
+    problemIfAny: "",
+    futureProgram: [""],
+    submittedAt: "",
+    reportImageGroup1: [],
+    reportImageGroup2: [],
+    reportImageGroup3: [],
+    vicePresidentReport: "",
+    month: "",
+  });
+
+  useEffect(() => {
+    if (!event) return;
+
+    setReportForm({
+      eventName: event.eventName || "",
+      vertical: event.vertical || "",
+      date: event.date || "",
+      time: event.time || "",
+      program: event.program || "",
+      venue: event.venue || "",
+      eventOverview: event.report?.eventOverview || event.eventOverview || "",
+      chiefGuestCount: event.report?.chiefGuestCount || "",
+      guestOfHonorCount: event.report?.guestOfHonorCount || "",
+      facultyCount: event.report?.facultyCount || "",
+      lgbMembersCount: event.report?.lgbMembersCount || "",
+      jcsCount: event.report?.jcsCount || "",
+      familyMembersCount: event.report?.familyMembersCount || "",
+      pastPresidentsCount: event.report?.pastPresidentsCount || "",
+      chiefGuestId: event.report?.chiefGuestId || event.chiefGuestId || "",
+      guestOfHonorId: event.report?.guestOfHonorId || event.guestOfHonorId || "",
+      facultyId: event.report?.facultyId || event.facultySpeakerId || "",
+      jacCount: event.report?.jacCount || "",
+      nonJcCount: event.report?.nonJcCount || "",
+      zoneNationalPersonCount: event.report?.zoneNationalPersonCount || "",
+      zoneNationalPersonId: event.report?.zoneNationalPersonId || "",
+      totalCount: event.report?.totalCount || "",
+      reportImageGroup1: event.report?.reportImageGroup1 || [],
+      reportImageGroup2: event.report?.reportImageGroup2 || [],
+      reportImageGroup3: event.report?.reportImageGroup3 || [],
+      beneficiaryCount: event.report?.beneficiaryCount || "",
+      description: event.report?.description || "",
+      problemIfAny: event.report?.problemIfAny || "",
+      futureProgram:
+        Array.isArray(event.report?.futureProgram) && event.report.futureProgram.length
+          ? event.report.futureProgram
+          : [""],
+      submittedAt: event.report?.submittedAt || "",
+      vicePresidentReport: event.report?.vicePresidentReport || "",
+      month: event.report?.month || "",
+    });
+  }, [event]);
+
+  if (!event) {
+    return (
+      <div className="p-8">
+        <p>No event selected.</p>
+        <button onClick={() => onNavigate("events")}>Back to Events</button>
+      </div>
+    );
+  }
+
+  const handleReportChange = (key, value) => {
+    setReportForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const addFutureProgram = () => {
+    setReportForm((prev) => ({
+      ...prev,
+      futureProgram: [...prev.futureProgram, ""],
+    }));
+  };
+
+  const removeFutureProgram = (index) => {
+    setReportForm((prev) => ({
+      ...prev,
+      futureProgram:
+        prev.futureProgram.length === 1
+          ? [""]
+          : prev.futureProgram.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleFutureProgramChange = (index, value) => {
+    const updated = [...reportForm.futureProgram];
+    updated[index] = value;
+
+    setReportForm((prev) => ({
+      ...prev,
+      futureProgram: updated,
+    }));
+  };
+
+  const convertFilesToBase64 = async (files) => {
+    return await Promise.all(
+      Array.from(files)
+        .slice(0, 10)
+        .map(
+          (file) =>
+            new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            })
+        )
+    );
+  };
+
+  const handleReportImageUpload = async (key, e) => {
+    const files = e.target.files || [];
+    if (!files.length) return;
+    const converted = await convertFilesToBase64(files);
+    setReportForm((prev) => ({
+      ...prev,
+      [key]: converted,
+    }));
+  };
+
+  const handleSaveReport = async () => {
+    const reportData = {
+      eventOverview: reportForm.eventOverview,
+      chiefGuestCount: reportForm.chiefGuestCount,
+      guestOfHonorCount: reportForm.guestOfHonorCount,
+      facultyCount: reportForm.facultyCount,
+      lgbMembersCount: reportForm.lgbMembersCount,
+      jcsCount: reportForm.jcsCount,
+      familyMembersCount: reportForm.familyMembersCount,
+      pastPresidentsCount: reportForm.pastPresidentsCount,
+      chiefGuestId: reportForm.chiefGuestId,
+      guestOfHonorId: reportForm.guestOfHonorId,
+      facultyId: reportForm.facultyId,
+      jacCount: reportForm.jacCount,
+      nonJcCount: reportForm.nonJcCount,
+      zoneNationalPersonCount: reportForm.zoneNationalPersonCount,
+      zoneNationalPersonId: reportForm.zoneNationalPersonId,
+      totalCount: reportForm.totalCount,
+      reportImageGroup1: reportForm.reportImageGroup1,
+      reportImageGroup2: reportForm.reportImageGroup2,
+      reportImageGroup3: reportForm.reportImageGroup3,
+      beneficiaryCount: reportForm.beneficiaryCount,
+      description: reportForm.description,
+      problemIfAny: reportForm.problemIfAny,
+      futureProgram: reportForm.futureProgram,
+      submittedAt: reportForm.submittedAt,
+      vicePresidentReport: reportForm.vicePresidentReport,
+      month: reportForm.month,
+    };
+
+    try {
+      const res = await fetch(`/api/admin/events/${event._id || event.id}/report`, {
+        method: "PUT",
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ report: reportData }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Event report saved successfully!");
+        onNavigate("eventDetails", "All", { ...event, report: reportData });
+      } else {
+        alert(data.message || "Failed to save report.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Connection error.");
+    }
+  };
+
+  const inputClass =
+    "h-[52px] w-full rounded-2xl border border-[#e8ebf2] bg-white px-4 text-[14px] text-[#495160] outline-none";
+
+  const labelClass =
+    "mb-2 block text-[12px] font-bold uppercase tracking-[0.16em] text-[#4b5563] sm:text-[13px]";
+
+  const formatRichText = (command, value = null) => {
+    document.execCommand(command, false, value);
+  };
+
+  const handleRichTextInput = (field, e) => {
+    handleReportChange(field, e.currentTarget.innerHTML);
+  };
+
+  const isManagement =
+    (reportForm.vertical || "").trim().toLowerCase() === "management";
+
+  return (
+    <div className="flex min-h-screen bg-[#f5f7fb]">
+      <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-6 lg:px-8 lg:py-7">
+        <div className="mx-auto max-w-[1400px]">
+          <button
+            onClick={() => onNavigate("events")}
+            className="mb-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-[#5b3df5] shadow-sm ring-1 ring-[#eceff5]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back to Events
+          </button>
+
+          <section className="rounded-[30px] bg-white p-6 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+            <h2 className="text-[1.8rem] font-bold tracking-[-0.04em] text-[#1f2430]">
+              Event Reports
+            </h2>
+
+            {isManagement ? (
+              <div className="mt-6 rounded-[24px] border border-[#e6eaf2] bg-[#fafbff] p-5 sm:p-6">
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Report of Vice President</label>
+                    <input
+                      value={reportForm.vicePresidentReport || ""}
+                      onChange={(e) =>
+                        handleReportChange("vicePresidentReport", e.target.value)
+                      }
+                      className={inputClass}
+                      placeholder="Enter report of vice president"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>For the Month</label>
+                    <input
+                      type="month"
+                      value={reportForm.month}
+                      onChange={(e) => handleReportChange("month", e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Submitted at</label>
+                    <input
+                      value={reportForm.submittedAt}
+                      onChange={(e) =>
+                        handleReportChange("submittedAt", e.target.value)
+                      }
+                      className={inputClass}
+                      placeholder="Enter submitted place / submitted at"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Host</label>
+                    <input
+                      value={reportForm.eventOverview}
+                      onChange={(e) =>
+                        handleReportChange("eventOverview", e.target.value)
+                      }
+                      className={inputClass}
+                      placeholder="Enter host"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <h3 className="text-[1.2rem] font-bold text-[#1f2430]">
+                    Action Taken on Assignment
+                  </h3>
+                  <p className="mt-4 text-[15px] font-semibold text-[#1f2430]">
+                    1. Event Details
+                  </p>
+
+                  <div className="mt-4 overflow-hidden rounded-[18px] border border-[#d9deea]">
+                    <div className="grid grid-cols-[1fr_1fr] bg-[#f3f5fa] text-[13px] font-bold text-[#1f2430]">
+                      <div className="border-r border-[#d9deea] px-4 py-3">
+                        Particulars
+                      </div>
+                      <div className="px-4 py-3">Details</div>
+                    </div>
+
+                    {[
+                      ["Event Name", reportForm.eventName],
+                      ["Vertical", reportForm.vertical],
+                      ["Date", reportForm.date],
+                      ["Time", reportForm.time],
+                      ["Program", reportForm.program],
+                      ["Venue", reportForm.venue],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="grid grid-cols-[1fr_1fr] border-t border-[#d9deea] text-[14px]"
+                      >
+                        <div className="border-r border-[#d9deea] px-4 py-3 font-semibold text-[#1f2430]">
+                          {label}
+                        </div>
+                        <div className="px-4 py-3 text-[#4f5666]">
+                          {value || "-"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {event.eventGallery && event.eventGallery.length > 0 && (
+                    <div className="mt-8">
+                      <h4 className="text-[14px] font-bold text-[#1f2430] mb-3">Event Gallery (from creation)</h4>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                        {event.eventGallery.map((img, i) => (
+                          <img key={i} src={img} alt="Original Gallery" className="h-20 w-full rounded-xl object-cover ring-1 ring-[#e2e8f0]" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                    {[
+                      ["Chief Guest", "chiefGuestCount"],
+                      ["Guest of Honor", "guestOfHonorCount"],
+                      ["Faculty / Keynote Speaker", "facultyCount"],
+                      ["LGB Members", "lgbMembersCount"],
+                      ["Jc's", "jcsCount"],
+                      ["Family Members", "familyMembersCount"],
+                      ["Past Presidents", "pastPresidentsCount"],
+                      ["Chief Guest ID", "chiefGuestId"],
+                      ["Guest of Honor ID", "guestOfHonorId"],
+                      ["Faculty", "facultyId"],
+                      ["JAC", "jacCount"],
+                      ["Non-JC", "nonJcCount"],
+                      ["Beneficiary", "beneficiaryCount"],
+                      ["Total Attendance", "totalCount"],
+                    ].map(([label, key]) => (
+                      <div
+                        key={key}
+                        className="grid grid-cols-[1fr_1fr] border-t border-[#d9deea] text-[14px]"
+                      >
+                        <div className="border-r border-[#d9deea] px-4 py-3 font-semibold text-[#1f2430]">
+                          {label}
+                        </div>
+                        <div className="px-4 py-2">
+                          <input
+                            value={reportForm[key]}
+                            onChange={(e) =>
+                              handleReportChange(key, e.target.value)
+                            }
+                            className="w-full rounded-xl border border-[#e6eaf2] bg-white px-3 py-2 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+                            placeholder="Enter details"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="grid grid-cols-[1fr_1fr] border-t border-[#d9deea] text-[14px]">
+                      <div className="border-r border-[#d9deea] px-4 py-3 font-semibold text-[#1f2430]">
+                        Description
+                      </div>
+
+                      <div className="px-4 py-2">
+                        <div className="overflow-hidden rounded-xl border border-[#d9deea] bg-white">
+                          <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2">
+                            <select
+                              className="rounded-md border border-[#d9deea] bg-white px-2 py-1 text-[13px] outline-none"
+                              onChange={(e) =>
+                                formatRichText("formatBlock", e.target.value)
+                              }
+                              defaultValue=""
+                            >
+                              <option value="">Normal</option>
+                              <option value="H1">Heading 1</option>
+                              <option value="H2">Heading 2</option>
+                              <option value="P">Paragraph</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("bold")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] font-bold"
+                            >
+                              B
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("italic")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] italic"
+                            >
+                              I
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("underline")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] underline"
+                            >
+                              U
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                formatRichText("insertUnorderedList")
+                              }
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              • List
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("insertOrderedList")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              1. List
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("justifyLeft")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              Left
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("justifyCenter")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              Center
+                            </button>
+                          </div>
+
+                          <div
+                            contentEditable
+                            suppressContentEditableWarning
+                            onInput={(e) => handleRichTextInput("description", e)}
+                            dangerouslySetInnerHTML={{
+                              __html: reportForm.description || "",
+                            }}
+                            className="min-h-[140px] w-full px-4 py-3 text-[14px] text-[#1f2430] outline-none"
+                            style={{ whiteSpace: "pre-wrap" }}
+                          />
+
+                          {!reportForm.description && (
+                            <div className="pointer-events-none -mt-[132px] px-4 py-3 text-[14px] text-[#9ca3af]">
+                              Text box, Bulletins
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className={labelClass}>Problem if any</label>
+                    <textarea
+                      value={reportForm.problemIfAny}
+                      onChange={(e) =>
+                        handleReportChange("problemIfAny", e.target.value)
+                      }
+                      rows={4}
+                      className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 text-[14px] text-[#1f2430] outline-none focus:border-[#5b3df5]"
+                      placeholder="Text Box"
+                    />
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="mb-3 flex items-center justify-between">
+                      <label className={labelClass}>Future Program</label>
+
+                      <button
+                        type="button"
+                        onClick={addFutureProgram}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5b3df5] text-white shadow"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {reportForm.futureProgram.map((item, index) => (
+                        <div
+                          key={index}
+                          className="overflow-hidden rounded-2xl border border-[#e6eaf2] bg-white"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2">
+                            <select
+                              className="rounded-md border border-[#d9deea] bg-white px-2 py-1 text-[13px] outline-none"
+                              onChange={(e) =>
+                                formatRichText("formatBlock", e.target.value)
+                              }
+                              defaultValue=""
+                            >
+                              <option value="">Normal</option>
+                              <option value="H1">Heading 1</option>
+                              <option value="H2">Heading 2</option>
+                              <option value="P">Paragraph</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("bold")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] font-bold"
+                            >
+                              B
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("italic")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] italic"
+                            >
+                              I
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("underline")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px] underline"
+                            >
+                              U
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                formatRichText("insertUnorderedList")
+                              }
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              • List
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("insertOrderedList")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              1. List
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("justifyLeft")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              Left
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => formatRichText("justifyCenter")}
+                              className="rounded-md border border-[#d9deea] px-2 py-1 text-[13px]"
+                            >
+                              Center
+                            </button>
+                          </div>
+
+                          <div
+                            contentEditable
+                            suppressContentEditableWarning
+                            onInput={(e) =>
+                              handleFutureProgramChange(
+                                index,
+                                e.currentTarget.innerHTML
+                              )
+                            }
+                            dangerouslySetInnerHTML={{ __html: item || "" }}
+                            className="min-h-[120px] px-4 py-3 text-[14px] text-[#1f2430] outline-none"
+                            style={{ whiteSpace: "pre-wrap" }}
+                          />
+
+                          {!item && (
+                            <div className="pointer-events-none -mt-[112px] px-4 py-3 text-[14px] text-[#9ca3af]">
+                              Enter future program details
+                            </div>
+                          )}
+
+                          <div className="flex justify-end p-2">
+                            <button
+                              type="button"
+                              onClick={() => removeFutureProgram(index)}
+                              className="text-[12px] font-medium text-red-500"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+              <div className="mt-6 grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Event Name</label>
+                  <input value={reportForm.eventName} readOnly className={inputClass} />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Vertical</label>
+                  <input value={reportForm.vertical} readOnly className={inputClass} />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Date</label>
+                  <input value={reportForm.date} readOnly className={inputClass} />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Time</label>
+                  <input value={reportForm.time} readOnly className={inputClass} />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Program</label>
+                  <input value={reportForm.program} readOnly className={inputClass} />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Venue</label>
+                  <input value={reportForm.venue} readOnly className={inputClass} />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Event Overview</label>
+                  <textarea
+                    rows={5}
+                    value={reportForm.eventOverview}
+                    onChange={(e) => handleReportChange("eventOverview", e.target.value)}
+                    className="w-full rounded-2xl border border-[#e8ebf2] bg-white px-4 py-3 text-[14px] text-[#495160] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Chief Guest</label>
+                  <input
+                    value={reportForm.chiefGuestCount}
+                    onChange={(e) => handleReportChange("chiefGuestCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Chief Guest ID</label>
+                  <input
+                    value={reportForm.chiefGuestId}
+                    onChange={(e) => handleReportChange("chiefGuestId", e.target.value)}
+                    className={inputClass}
+                    placeholder="ID"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Guest of Honor</label>
+                  <input
+                    value={reportForm.guestOfHonorCount}
+                    onChange={(e) => handleReportChange("guestOfHonorCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Guest of Honor ID</label>
+                  <input
+                    value={reportForm.guestOfHonorId}
+                    onChange={(e) => handleReportChange("guestOfHonorId", e.target.value)}
+                    className={inputClass}
+                    placeholder="ID"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Faculty / Keynote Speaker</label>
+                  <input
+                    value={reportForm.facultyCount}
+                    onChange={(e) => handleReportChange("facultyCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Faculty ID</label>
+                  <input
+                    value={reportForm.facultyId}
+                    onChange={(e) => handleReportChange("facultyId", e.target.value)}
+                    className={inputClass}
+                    placeholder="ID"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>LGB Members</label>
+                  <input
+                    value={reportForm.lgbMembersCount}
+                    onChange={(e) => handleReportChange("lgbMembersCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>JC's</label>
+                  <input
+                    value={reportForm.jcsCount}
+                    onChange={(e) => handleReportChange("jcsCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Family Members</label>
+                  <input
+                    value={reportForm.familyMembersCount}
+                    onChange={(e) => handleReportChange("familyMembersCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Past Presidents</label>
+                  <input
+                    value={reportForm.pastPresidentsCount}
+                    onChange={(e) => handleReportChange("pastPresidentsCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>JAC</label>
+                  <input
+                    value={reportForm.jacCount}
+                    onChange={(e) => handleReportChange("jacCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Non-JC</label>
+                  <input
+                    value={reportForm.nonJcCount}
+                    onChange={(e) => handleReportChange("nonJcCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Zone / National Person</label>
+                  <input
+                    value={reportForm.zoneNationalPersonCount}
+                    onChange={(e) => handleReportChange("zoneNationalPersonCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Zone / National Person ID</label>
+                  <input
+                    value={reportForm.zoneNationalPersonId}
+                    onChange={(e) => handleReportChange("zoneNationalPersonId", e.target.value)}
+                    className={inputClass}
+                    placeholder="ID"
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>Total</label>
+                  <input
+                    value={reportForm.totalCount}
+                    onChange={(e) => handleReportChange("totalCount", e.target.value)}
+                    className={inputClass}
+                    placeholder="Numerical"
+                  />
+                </div>
+
+                <div className="md:col-span-2 grid gap-5 md:grid-cols-3">
+                  {[
+                    ["reportImageGroup1", "Event Gallery 1"],
+                    ["reportImageGroup2", "Event Gallery 2"],
+                    ["reportImageGroup3", "Event Gallery 3"],
+                  ].map(([key, label]) => (
+                    <div key={key}>
+                      <label className={labelClass}>{label}</label>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={(e) => handleReportImageUpload(key, e)}
+                        className="block w-full text-[13px]"
+                      />
+                      <p className="mt-2 text-[12px] text-[#7b8494]">
+                        Upload up to 10 images
+                      </p>
+
+                      {reportForm[key].length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {reportForm[key].map((img, index) => (
+                            <img
+                              key={index}
+                              src={img}
+                              alt={`${label} ${index + 1}`}
+                              className="h-20 w-full rounded-xl object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={handleSaveReport}
+                className="rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_14px_22px_rgba(78,58,233,0.22)]"
+              >
+                Save Event Report
+              </button>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+
+let classificationCache = null;
+let classificationCacheTime = 0;
+
 function Memberclassification({
   onLogout,
   onNavigate,
   activePage,
   showSettingsPage,
   setShowSettingsPage,
+  adminUser,
 }) {
-  const segments = [
-    {
-      name: "LGB",
-      members: 452,
-      growth: "+8%",
-      growthClass: "text-emerald-500 bg-emerald-50",
-      bar: "bg-[#6D5EF7]",
-      iconWrap: "bg-[#f2efff] text-[#6D5EF7]",
-      icon: <Users className="h-4 w-4" />,
-      action: "View Members",
-      group: "categories",
-    },
-    {
-      name: "Members",
-      members: 500,
-      growth: "+6%",
-      growthClass: "text-emerald-500 bg-emerald-50",
-      bar: "bg-[#10b981]",
-      iconWrap: "bg-[#ecfdf5] text-[#10b981]",
-      icon: <Users className="h-4 w-4" />,
-      action: "View Members",
-      group: "categories",
-    },
-    {
-      name: "Appointee",
-      members: 126,
-      growth: "+5%",
-      growthClass: "text-emerald-500 bg-emerald-50",
-      bar: "bg-[#3B82F6]",
-      iconWrap: "bg-[#eef5ff] text-[#3B82F6]",
-      icon: <Briefcase className="h-4 w-4" />,
-      action: "View Members",
-      group: "categories",
-    },
-    {
-      name: "JAC",
-      members: 89,
-      growth: "-2%",
-      growthClass: "text-rose-500 bg-rose-50",
-      bar: "bg-[#A855F7]",
-      iconWrap: "bg-[#f5edff] text-[#A855F7]",
-      icon: <Sparkles className="h-4 w-4" />,
-      action: "View Members",
-      group: "categories",
-    },
-    {
-      name: "Past President",
-      members: 34,
-      growth: "Stable",
-      growthClass: "text-slate-500 bg-slate-100",
-      bar: "bg-[#64748B]",
-      iconWrap: "bg-[#f1f5f9] text-[#64748B]",
-      icon: <ShieldCheck className="h-4 w-4" />,
-      action: "View Members",
-      group: "categories",
-    },
-    {
-      name: "Business",
-      members: 156,
-      growth: "+8%",
-      growthClass: "text-emerald-500 bg-emerald-50",
-      bar: "bg-[#06B6D4]",
-      iconWrap: "bg-[#ecfeff] text-[#06B6D4]",
-      icon: <CreditCard className="h-4 w-4" />,
-      action: "View Members",
+  const [classLoading, setClassLoading] = useState(true);
+  const [catCounts, setCatCounts] = useState({});
+  const [segCounts, setSegCounts] = useState(buildEmptySegmentCounts);
+  const [categoryGrowth, setCategoryGrowth] = useState({});
+  const [topStats, setTopStats] = useState({ totalCategories: 0, growthMomentum: "+0%", topPerforming: "None", maxMembers: 1 });
+
+  useEffect(() => {
+    const fetchClassData = async () => {
+      if (classificationCache && Date.now() - classificationCacheTime < 60000) {
+         setCatCounts(classificationCache.catCounts);
+         setSegCounts(classificationCache.segCounts);
+         setCategoryGrowth(classificationCache.categoryGrowth);
+         setTopStats(classificationCache.topStats);
+         setClassLoading(false);
+         return;
+      }
+      try {
+        const res = await fetch('/api/admin/members?limit=500', { headers: getAdminHeaders() });
+        if (res.status === 401 || res.status === 403) {
+          clearAdminSessionStorage();
+          onLogout();
+          return;
+        }
+        const data = await res.json();
+        if (res.ok) {
+          const members = data.members || [];
+          const cats = {};
+          const segs = buildEmptySegmentCounts();
+          const catGrowth = {};
+          const segGrowth = {};
+          let recent = 0;
+          let prev = 0;
+          const now = Date.now();
+
+          members.forEach(m => {
+            const isRecent = m.createdAt && (now - new Date(m.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000);
+            const isPrev = m.createdAt && (!isRecent) && (now - new Date(m.createdAt).getTime() <= 60 * 24 * 60 * 60 * 1000);
+            if (isRecent) recent++;
+            if (isPrev) prev++;
+
+            const cat = m.membershipCategory || 'Member';
+            cats[cat] = (cats[cat] || 0) + 1;
+            if (!catGrowth[cat]) catGrowth[cat] = { recent: 0, prev: 0 };
+            if (isRecent) catGrowth[cat].recent++;
+            if (isPrev) catGrowth[cat].prev++;
+
+            const seg = m.memberSegment;
+            if (seg) {
+               segs[seg] = (segs[seg] || 0) + 1;
+               if (!segGrowth[seg]) segGrowth[seg] = { recent: 0, prev: 0 };
+               if (isRecent) segGrowth[seg].recent++;
+               if (isPrev) segGrowth[seg].prev++;
+            }
+          });
+
+          const g = prev === 0 ? (recent > 0 ? "+100%" : "0%") : `${recent >= prev ? "+" : ""}${Math.round(((recent - prev)/prev)*100)}%`;
+          
+          let topName = "None";
+          let maxVal = -1;
+          for (const [k, v] of Object.entries(cats)) {
+             if (v > maxVal) { maxVal = v; topName = k; }
+          }
+
+          Object.keys(catGrowth).forEach(k => {
+             const r = catGrowth[k].recent;
+             const p = catGrowth[k].prev;
+             catGrowth[k].str = p === 0 ? (r > 0 ? "+100%" : "0%") : `${r >= p ? "+" : ""}${Math.round(((r - p)/p)*100)}%`;
+             catGrowth[k].class = r >= p ? "text-emerald-500 bg-emerald-50" : "text-red-500 bg-red-50";
+          });
+          Object.keys(segGrowth).forEach(k => {
+             const r = segGrowth[k].recent;
+             const p = segGrowth[k].prev;
+             segGrowth[k].str = p === 0 ? (r > 0 ? "+100%" : "0%") : `${r >= p ? "+" : ""}${Math.round(((r - p)/p)*100)}%`;
+             segGrowth[k].class = r >= p ? "text-emerald-500 bg-emerald-50" : "text-red-500 bg-red-50";
+          });
+
+          const maxMembersObj = Math.max(...Object.values(cats), ...Object.values(segs), 1);
+          const stats = { totalCategories: Object.keys(cats).length + Object.keys(segs).length, growthMomentum: g, topPerforming: topName, maxMembers: maxMembersObj };
+
+          setCatCounts(cats);
+          setSegCounts(segs);
+          setCategoryGrowth({ ...catGrowth, ...segGrowth });
+          setTopStats(stats);
+
+          classificationCache = { catCounts: cats, segCounts: segs, topStats: stats, categoryGrowth: { ...catGrowth, ...segGrowth } };
+          classificationCacheTime = Date.now();
+        }
+      } catch (e) { console.error(e); }
+      finally { setClassLoading(false); }
+    };
+    fetchClassData();
+  }, [onLogout]);
+
+  const defaultSegments = [
+    { name: "Member", bar: "bg-[#10b981]", iconWrap: "bg-[#ecfdf5] text-[#10b981]", icon: <Users className="h-4 w-4" />, group: "categories" },
+    { name: "Appointee", bar: "bg-[#3B82F6]", iconWrap: "bg-[#eef5ff] text-[#3B82F6]", icon: <Briefcase className="h-4 w-4" />, group: "categories" },
+    { name: "Coordinator", bar: "bg-[#06B6D4]", iconWrap: "bg-[#ecfeff] text-[#06B6D4]", icon: <LayoutGrid className="h-4 w-4" />, group: "categories" },
+    { name: "Director", bar: "bg-[#F59E0B]", iconWrap: "bg-[#fffbeb] text-[#F59E0B]", icon: <FolderKanban className="h-4 w-4" />, group: "categories" },
+    { name: "Vice President", bar: "bg-[#8B5CF6]", iconWrap: "bg-[#f5edff] text-[#8B5CF6]", icon: <Sparkles className="h-4 w-4" />, group: "categories" },
+    { name: "Secretary", bar: "bg-[#EC4899]", iconWrap: "bg-[#fdf2f8] text-[#EC4899]", icon: <Mail className="h-4 w-4" />, group: "categories" },
+    { name: "Treasurer", bar: "bg-[#14B8A6]", iconWrap: "bg-[#f0fdfa] text-[#14B8A6]", icon: <CreditCard className="h-4 w-4" />, group: "categories" },
+    { name: "President", bar: "bg-[#64748B]", iconWrap: "bg-[#f1f5f9] text-[#64748B]", icon: <ShieldCheck className="h-4 w-4" />, group: "categories" },
+    ...MEMBER_SEGMENT_OPTIONS.map((name) => ({
+      name,
+      ...SEGMENT_CLASSIFICATION_META[name],
       group: "segment",
-    },
-    {
-      name: "Salaried",
-      members: 284,
-      growth: "+4%",
-      growthClass: "text-emerald-500 bg-emerald-50",
-      bar: "bg-[#10B981]",
-      iconWrap: "bg-[#ecfdf5] text-[#10B981]",
-      icon: <Briefcase className="h-4 w-4" />,
-      action: "View Members",
-      group: "segment",
-    },
+    })),
   ];
+
+  const segments = defaultSegments.map(s => {
+    const isCat = s.group === "categories";
+    const membersCount = (isCat ? catCounts[s.name] : segCounts[s.name]) || 0;
+    const growthData = categoryGrowth[s.name] || {};
+    return {
+      ...s,
+      members: membersCount,
+      growth: growthData.str || "0%",
+      growthClass: growthData.class || "text-slate-500 bg-slate-50",
+      action: "View Members",
+    };
+  });
 
   const updates = [
     {
@@ -4297,9 +8248,9 @@ function Memberclassification({
   );
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-[#eef0f5] p-0 lg:p-2 sm:p-3">
-      <div className="h-screen w-full overflow-hidden rounded-none border-0 bg-white shadow-none lg:h-[calc(100vh-1rem)] lg:rounded-[22px] lg:border lg:border-[#dfe3ee] lg:shadow-[0_20px_60px_rgba(25,30,60,0.08)] sm:lg:h-[calc(100vh-1.5rem)]">
-        <div className="flex h-full w-full overflow-hidden">
+    <div className="min-h-screen w-full bg-[#eef0f5] p-0 lg:p-2 sm:p-3">
+      <div className="min-h-screen w-full rounded-none border-0 bg-white shadow-none lg:min-h-[calc(100vh-1rem)] lg:rounded-[22px] lg:border lg:border-[#dfe3ee] lg:shadow-[0_20px_60px_rgba(25,30,60,0.08)] sm:lg:min-h-[calc(100vh-1.5rem)]">
+        <div className="flex h-full w-full">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -4404,7 +8355,7 @@ function Memberclassification({
           </aside>
 
           {/* Main Content */}
-          <main className="min-w-0 h-full w-full flex-1 overflow-y-auto overflow-x-hidden bg-[#f5f7fb] px-4 py-4 pt-20 sm:px-5 sm:py-5 sm:pt-20 md:px-6 md:py-6 md:pt-24 lg:pt-6">
+          <main className="relative z-10 min-w-0 flex-1 bg-[#f5f7fb] px-4 py-4 pt-20 sm:px-5 sm:py-5 sm:pt-20 md:px-6 md:py-6 md:pt-24 lg:pt-6">
             <div className="mx-auto w-full max-w-none">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex h-[44px] w-full max-w-[430px] items-center gap-2 rounded-full border border-[#edf0f6] bg-white px-3 shadow-sm sm:gap-3 sm:px-4">
@@ -4420,14 +8371,7 @@ function Memberclassification({
                     <Bell className="h-5 w-5" />
                     <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
                   </button>
-                  <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                    <img
-                      src={saran}
-                      alt="Sarankumar R"
-                      className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                    />
-                    <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
-                  </div>
+                  <AdminHeader adminUser={adminUser} />
                 </div>
               </div>
 
@@ -4453,7 +8397,7 @@ function Memberclassification({
                     Total Categories
                   </p>
                   <h3 className="mt-2 text-[1.8rem] font-bold text-[#1f2430] sm:text-[2rem] md:text-[2.2rem]">
-                    32
+                    {topStats.totalCategories}
                   </h3>
                   <p className="mt-4 text-[11px] font-semibold text-[#6b5bf6] sm:mt-5 sm:text-[12px] md:mt-6">
                     ↗ Active Growth
@@ -4468,7 +8412,7 @@ function Memberclassification({
                     Growth Momentum
                   </p>
                   <h3 className="mt-2 text-[1.8rem] font-bold text-[#1f2430] sm:text-[2rem] md:text-[2.2rem]">
-                    +18%
+                    {topStats.growthMomentum}
                   </h3>
                   <p className="mt-4 text-[11px] font-semibold text-[#6b5bf6] sm:mt-5 sm:text-[12px] md:mt-6">
                     Last 30 Days
@@ -4483,10 +8427,10 @@ function Memberclassification({
                     Top Performing
                   </p>
                   <h3 className="mt-2 text-[1.8rem] font-bold text-[#1f2430] sm:text-[2rem] md:text-[2.1rem]">
-                    LGB Member
+                    {topStats.topPerforming}
                   </h3>
                   <p className="mt-4 text-[11px] font-semibold text-[#6b5bf6] sm:mt-5 sm:text-[12px] md:mt-6">
-                    ★ 452 Active Members
+                    ★ Most Active Group
                   </p>
                   <div className="absolute bottom-2 right-3 text-[52px] font-bold leading-none text-[#f3f4f8] sm:bottom-3 sm:right-4 sm:text-[58px] md:text-[62px]">
                     ✓
@@ -4548,14 +8492,14 @@ function Memberclassification({
                       </p>
 
                       <div className="mt-4 h-2 rounded-full bg-[#edf0f5] sm:mt-5">
-                        <div className={`h-2 w-[72%] rounded-full ${segment.bar}`} />
+                        <div className={`h-2 rounded-full ${segment.bar}`} style={{ width: `${Math.max(2, Math.round((segment.members / Math.max(1, topStats.maxMembers)) * 100))}%` }} />
                       </div>
 
                       <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#eef1f6] py-2 text-[12px] font-semibold text-[#3b4354] sm:mt-5 sm:py-2.5 sm:text-[13px]">
                         ✎ Manage
                       </button>
 
-                      <button className="mt-2 w-full text-center text-[11px] font-medium text-[#8a91a2] sm:mt-3 sm:text-[12px]">
+                      <button onClick={() => onNavigate("members", segment.name)} className="mt-2 w-full text-center text-[11px] font-medium text-[#8a91a2] hover:text-[#5b3df5] sm:mt-3 sm:text-[12px]">
                         {segment.action}
                       </button>
                     </div>
@@ -4573,12 +8517,99 @@ function Memberclassification({
 
 
 
-function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage }) {
+let dashboardCache = null;
+let dashboardCacheTime = 0;
+
+function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, setShowSettingsPage, adminUser }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [stats, setStats] = useState({ totalMembers: 0, newThisMonth: 0, totalEvents: 0, activeMembers: 0 });
+  const [categoryStats, setCategoryStats] = useState([]);
+  const [segmentStats, setSegmentStats] = useState([]);
+  const [membersList, setMembersList] = useState([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (dashboardCache && Date.now() - dashboardCacheTime < 60000) {
+        setStats(dashboardCache.stats);
+        setCategoryStats(dashboardCache.categoryStats);
+        setSegmentStats(dashboardCache.segmentStats);
+        setMembersList(dashboardCache.membersList);
+        setStatsLoading(false);
+        return;
+      }
+      setStatsLoading(true);
+      try {
+        const [statsRes, membersRes] = await Promise.all([
+          fetch('/api/admin/stats', { headers: getAdminHeaders() }),
+          fetch('/api/admin/members?limit=200', { headers: getAdminHeaders() }),
+        ]);
+        const statsData = await statsRes.json();
+        const membersData = await membersRes.json();
+
+        if (
+          statsRes.status === 401 ||
+          statsRes.status === 403 ||
+          membersRes.status === 401 ||
+          membersRes.status === 403
+        ) {
+          clearAdminSessionStorage();
+          onLogout();
+          return;
+        }
+
+        if (statsRes.ok) setStats(statsData);
+
+        if (membersRes.ok) {
+          const members = membersData.members || [];
+          // Count by membershipCategory
+          const catCounts = {};
+          const segCounts = buildEmptySegmentCounts();
+          members.forEach(m => {
+            const cat = m.membershipCategory || 'Member';
+            catCounts[cat] = (catCounts[cat] || 0) + 1;
+            if (m.memberSegment && Object.prototype.hasOwnProperty.call(segCounts, m.memberSegment)) {
+              segCounts[m.memberSegment] += 1;
+            }
+          });
+          const CATEGORY_COLORS = [
+            { color: 'from-[#4e3ae9] to-[#6a42f5]' }, { color: 'from-[#6a5af9] to-[#8d88ff]' },
+            { color: 'from-[#06b6d4] to-[#67e8f9]' }, { color: 'from-[#f59e0b] to-[#fcd34d]' },
+            { color: 'from-[#8b5cf6] to-[#c4b5fd]' }, { color: 'from-[#ec4899] to-[#f9a8d4]' },
+            { color: 'from-[#14b8a6] to-[#5eead4]' }, { color: 'from-[#64748b] to-[#cbd5e1]' },
+          ];
+          const CATEGORY_ORDER = ['Member','Appointee','Coordinator','Director','Vice President','Secretary','Treasurer','President'];
+          const cats = CATEGORY_ORDER.map((name, i) => ({
+            name, value: catCounts[name] || 0, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length].color
+          }));
+          if (cats.length === 0 && Object.keys(catCounts).length > 0) {
+            Object.entries(catCounts).forEach(([name, value], i) => cats.push({ name, value, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length].color }));
+          }
+          setCategoryStats(cats);
+          const currentSegmentStats = buildSegmentStats(segCounts);
+          setSegmentStats(currentSegmentStats);
+          setMembersList(members);
+
+          dashboardCache = {
+            stats: statsData,
+            categoryStats: cats,
+            segmentStats: currentSegmentStats,
+            membersList: members
+          };
+          dashboardCacheTime = Date.now();
+        }
+      } catch (e) {
+        console.error('Dashboard data fetch error:', e);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    fetchDashboardData();
+  }, [onLogout]);
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f4f5f7] text-[#1f2430]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="bg-[#f4f5f7] text-[#1f2430]">
+      <div className="flex">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="fixed top-4 right-4 z-50 rounded-full bg-[#5b3df5] p-3 text-white shadow-lg lg:hidden"
@@ -4586,7 +8617,7 @@ function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, set
           <Menu className="h-6 w-6" />
         </button>
 
-        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
+        <aside className={`fixed inset-y-0 left-0 z-40 w-[260px] transform border-r border-[#edf0f5] bg-[#f7f9fc] px-4 py-5 transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} sm:px-5 sm:py-6`}>
           <div className="flex h-full flex-col">
             <div>
               <SidebarBrand />
@@ -4661,7 +8692,7 @@ function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, set
           </div>
         </aside>
 
-        <main className="h-screen flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
+        <main className="relative z-10 flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-7 xl:px-10">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex h-[48px] w-full max-w-[540px] items-center gap-2 rounded-full border border-[#eff1f5] bg-[#f8f9fb] px-3 shadow-inner sm:gap-3 sm:px-4 md:px-5">
               <Search className="h-4 w-4 text-[#9ca3b1] sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
@@ -4669,101 +8700,165 @@ function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, set
             </div>
 
             <div className="flex items-center justify-end gap-3 sm:gap-4">
-              <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-sm ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
-              </button>
-              <div className="flex items-center gap-3 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-[#eceef4] sm:px-5 sm:py-2">
-                <img
-                  src={saran}
-                  alt="Sarankumar R"
-                  className="h-8 w-8 rounded-full border border-[#f0f2f5] object-cover sm:h-10 sm:w-10"
-                />
-                <span className="text-[14px] font-bold text-[#1f2430] sm:text-[16px]">Sarankumar R</span>
-              </div>
+            <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#636b7b] shadow-sm ring-1 ring-[#eceef4] transition hover:bg-[#fafbff] sm:h-12 sm:w-12">
+            <Bell className="h-5 w-5" />
+            <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#5b3df5] sm:top-3.5 sm:right-3.5"></span>
+            </button>
+            <AdminHeader adminUser={adminUser} />
             </div>
           </div>
 
           <section className="mt-5 sm:mt-6 md:mt-7 lg:mt-8">
-            <h1 className="text-[2rem] font-bold tracking-[-0.05em] leading-none sm:text-[2.5rem] md:text-[2.8rem] lg:text-[3.2rem]">Welcome, Sarankumar R</h1>
+            <h1 className="text-[2rem] font-bold tracking-[-0.05em] leading-none sm:text-[2.5rem] md:text-[2.8rem] lg:text-[3.2rem]">Welcome, {(adminUser?.name || "Admin").replace("System Administrator", "Admin")}</h1>
             <p className="mt-2 text-[1.1rem] text-[#6f7787] sm:mt-2.5 sm:text-[1.2rem] md:mt-3 md:text-[1.25rem] lg:text-[1.35rem]">
-              Your directory ecosystem is growing at a record pace this week.
+              Your directory ecosystem is growing. Here's the live overview.
             </p>
           </section>
 
           <section className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.map((item) => <StatCard key={item.title} item={item} />)}
+            <div className="rounded-[22px] bg-white p-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[#a3a9b7]">Total Members</p>
+              <p className="mt-2 text-[2rem] font-bold text-[#1f2430]">{statsLoading ? '—' : stats.totalMembers}</p>
+            </div>
+            <div className="rounded-[22px] bg-white p-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[#a3a9b7]">Active Members</p>
+              <p className="mt-2 text-[2rem] font-bold text-[#1f2430]">{statsLoading ? '—' : stats.activeMembers}</p>
+            </div>
+            <div className="rounded-[22px] bg-white p-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[#a3a9b7]">New This Month</p>
+              <p className="mt-2 text-[2rem] font-bold text-[#1f2430]">{statsLoading ? '—' : stats.newThisMonth}</p>
+            </div>
+            <div className="rounded-[22px] bg-white p-5 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3]">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[#a3a9b7]">Total Events</p>
+              <p className="mt-2 text-[2rem] font-bold text-[#1f2430]">{statsLoading ? '—' : stats.totalEvents}</p>
+            </div>
           </section>
 
           <section className="mt-5 sm:mt-6 md:mt-7 lg:mt-8">
-            <GrowthChart />
+            <GrowthChart members={membersList} />
           </section>
 
           <section className="mt-5 space-y-6 sm:mt-6 sm:space-y-7 md:mt-7 md:space-y-8">
             <section className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 lg:grid-cols-2">
-              {/* Categories of Members Section */}
-              <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
+              {/* Categories of Members Section - Live DB data */}
+              <div className="rounded-[32px] bg-[linear-gradient(135deg,#ffffff_0%,#f7f4ff_52%,#eef4ff_100%)] p-5 shadow-[0_24px_60px_rgba(91,61,245,0.10)] ring-1 ring-[#ebe7ff] sm:p-6 md:p-7 lg:p-8">
                 <div className="flex items-center justify-between">
                   <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.7rem] lg:text-[1.9rem]">
                     Categories of Members
                   </h3>
                   <button className="text-[#8f96a4] text-[16px] leading-none sm:text-[17px] md:text-[18px]">•••</button>
                 </div>
-
                 <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5 md:mt-7 md:space-y-6">
-                  {[
-                    { name: "LGB", value: "4,820", width: "w-[96%]", color: "from-[#4e3ae9] to-[#6a42f5]" },
-                    { name: "Members", value: "4,120", width: "w-[82%]", color: "from-[#6a5af9] to-[#8d88ff]" },
-                    { name: "Appointee", value: "3,450", width: "w-[69%]", color: "from-[#7a73ff] to-[#9c97ff]" },
-                    { name: "JAC", value: "2,910", width: "w-[58%]", color: "from-[#828cff] to-[#a4aeff]" },
-                    { name: "Past President", value: "1,840", width: "w-[42%]", color: "from-[#8b96b8] to-[#b2bdd3]" },
-                  ].map((item) => (
-                    <div key={item.name}>
-                      <div className="mb-2 flex items-center justify-between text-[12px] font-medium text-[#3b4250] sm:text-[13px] md:text-[14px]">
-                        <span>{item.name}</span>
-                        <span className="text-[#9aa2b0]">{item.value}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-[#e8ebf2] sm:h-2.5">
-                        <div className={`h-full ${item.width} rounded-full bg-gradient-to-r ${item.color}`} />
-                      </div>
-                    </div>
-                  ))}
+                  {statsLoading ? (
+                    <p className="text-sm text-[#9aa2b0]">Loading...</p>
+                  ) : categoryStats.length === 0 ? (
+                    <p className="text-sm text-[#9aa2b0]">No members yet.</p>
+                  ) : (() => {
+                    const max = Math.max(...categoryStats.map(c => c.value), 1);
+                    return categoryStats.map((item) => {
+                      const perc = Math.round((item.value / max) * 100);
+                      return (
+                        <div
+                          key={item.name}
+                          className="rounded-[24px] bg-gradient-to-r from-[#f8f6ff] to-[#ffffff] p-4 ring-1 ring-[#eceff5] shadow-[0_10px_24px_rgba(25,30,60,0.04)]"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className={`h-3 w-3 rounded-full ${item.color.replace('from-', 'bg-').split(' ')[0] || 'bg-[#5b3df5]'}`} />
+                              <div>
+                                <p className="text-[15px] font-bold text-[#1f2430] sm:text-[16px]">
+                                  {item.name}
+                                </p>
+                                <p className="mt-1 text-[12px] font-medium text-[#8b92a1]">
+                                  Category
+                                </p>
+                              </div>
+                            </div>
+                    
+                            <div className="text-right">
+                              <p className="text-[18px] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[20px]">
+                                {item.value}
+                              </p>
+                              <p className="text-[11px] uppercase tracking-[0.16em] text-[#9aa2b0]">
+                                Members
+                              </p>
+                            </div>
+                          </div>
+                    
+                          <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/80 ring-1 ring-[#eceff5]">
+                            <div
+                              className={`h-full rounded-full bg-gradient-to-r ${item.color}`}
+                              style={{ width: `${perc}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
-              {/* Segment of Members Section */}
-              <div className="rounded-[30px] bg-white p-4 shadow-[0_8px_24px_rgba(25,30,60,0.04)] ring-1 ring-[#efeff3] sm:p-5 md:p-6 lg:p-7">
+              {/* Segment of Members Section - Live DB data */}
+              <div className="rounded-[32px] bg-[linear-gradient(135deg,#ffffff_0%,#f7f5ff_55%,#eef4ff_100%)] p-5 shadow-[0_20px_50px_rgba(91,61,245,0.08)] ring-1 ring-[#ebe7ff] sm:p-6 md:p-7 lg:p-8">
                 <div className="flex items-center justify-between">
                   <h3 className="text-[1.3rem] font-bold tracking-[-0.04em] text-[#1f2430] sm:text-[1.5rem] md:text-[1.6rem] lg:text-[1.7rem]">
                     Segment of Members
                   </h3>
                   <button className="text-[#8f96a4] text-[16px] leading-none sm:text-[17px] md:text-[18px]">•••</button>
                 </div>
-
                 <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-[12px] font-medium text-[#3b4250] sm:text-[13px] md:text-[14px]">
-                      <span>Business</span>
-                      <span className="text-[#9aa2b0]">1,200</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[#e8ebf2] sm:h-2.5">
-                      <div className="h-full w-[62%] rounded-full bg-gradient-to-r from-[#4e3ae9] to-[#6a42f5]" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-[12px] font-medium text-[#3b4250] sm:text-[13px] md:text-[14px]">
-                      <span>Salaried</span>
-                      <span className="text-[#9aa2b0]">940</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[#e8ebf2] sm:h-2.5">
-                      <div className="h-full w-[48%] rounded-full bg-gradient-to-r from-[#7a73ff] to-[#9c97ff]" />
-                    </div>
-                  </div>
+                  {statsLoading ? (
+                    <p className="text-sm text-[#9aa2b0]">Loading...</p>
+                  ) : (() => {
+                    const maxSeg = Math.max(...segmentStats.map(s => s.value), 1);
+                    const SEG_COLORS = ['from-[#4e3ae9] via-[#6a42f5] to-[#8b5cf6]', 'from-[#06b6d4] via-[#3b82f6] to-[#7c3aed]'];
+                    return segmentStats.map((seg, i) => {
+                      const perc = Math.round((seg.value / maxSeg) * 100);
+                      const bar = SEG_COLORS[i % SEG_COLORS.length];
+                      const dot = bar.split(' ')[0].replace('from-', 'bg-');
+                      const card = i % 2 === 0 ? "from-[#f4f0ff] to-[#ffffff]" : "from-[#eef8ff] to-[#ffffff]";
+                      return (
+                        <div
+                          key={seg.name}
+                          className={`rounded-[24px] bg-gradient-to-r ${card} p-4 ring-1 ring-[#eceff5] shadow-[0_10px_24px_rgba(25,30,60,0.04)]`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className={`h-3 w-3 rounded-full ${dot}`} />
+                              <div>
+                                <p className="text-[15px] font-bold text-[#1f2430] sm:text-[16px]">
+                                  {seg.name}
+                                </p>
+                                <p className="mt-1 text-[12px] font-medium text-[#8b92a1]">
+                                  Segment
+                                </p>
+                              </div>
+                            </div>
+                    
+                            <div className="text-right">
+                              <p className="text-[18px] font-bold tracking-[-0.03em] text-[#1f2430] sm:text-[20px]">
+                                {seg.value}
+                              </p>
+                              <p className="text-[11px] uppercase tracking-[0.16em] text-[#9aa2b0]">
+                                Members
+                              </p>
+                            </div>
+                          </div>
+                    
+                          <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/80 ring-1 ring-[#eceff5]">
+                            <div
+                              className={`h-full rounded-full bg-gradient-to-r ${bar}`}
+                              style={{ width: `${perc}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </section>
-            <RecentActivity />
+            <RecentActivity members={membersList} />
           </section>
         </main>
       </div>
@@ -4772,15 +8867,78 @@ function DashboardPage({ onLogout, onNavigate, activePage, showSettingsPage, set
 }
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [adminUser, setAdminUser] = useState(() => getAdminUser());
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY)));
+  const [isSessionChecking, setIsSessionChecking] = useState(() => Boolean(localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY)));
   const [activePage, setActivePage] = useState("dashboard");
   const [showSettingsPage, setShowSettingsPage] = useState(false);
+  const [membersFilter, setMembersFilter] = useState("All");
   const [eventCategoryFilter, setEventCategoryFilter] = useState("All");
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
-  const handleNavigate = (page, filter = "All") => {
-    setActivePage(page);
-    setEventCategoryFilter(filter);
+  useEffect(() => {
+    let isMounted = true;
+
+    const validateAdminSession = async () => {
+      const session = await fetchAuthenticatedAdmin();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (session.ok) {
+        localStorage.setItem(ADMIN_USER_STORAGE_KEY, JSON.stringify(session.member));
+        setAdminUser(session.member);
+        setIsLoggedIn(true);
+      } else {
+        clearAdminSessionStorage();
+        setAdminUser(null);
+        setIsLoggedIn(false);
+      }
+
+      setIsSessionChecking(false);
+    };
+
+    if (!localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY)) {
+      setIsSessionChecking(false);
+      return undefined;
+    }
+
+    validateAdminSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLogin = (user) => {
+    setAdminUser(user);
+    setIsLoggedIn(true);
+    setIsSessionChecking(false);
   };
+
+  const handleLogout = () => {
+    clearAdminSessionStorage();
+    setIsLoggedIn(false);
+    setAdminUser(null);
+    setActivePage("dashboard");
+    setMembersFilter("All");
+    setEventCategoryFilter("All");
+    setSelectedEvent(null);
+    setShowSettingsPage(false);
+  };
+
+
+
+ const handleNavigate = (page, filter = "All", eventData = null) => {
+  setActivePage(page);
+  setEventCategoryFilter?.(filter);
+  setSelectedEvent?.(eventData);
+
+  if (page === "members") {
+    setMembersFilter(filter || "All");
+  }
+};
 
   useEffect(() => {
     if (!showSettingsPage && activePage === "settings") {
@@ -4788,49 +8946,101 @@ export default function App() {
     }
   }, [showSettingsPage, activePage]);
 
+  if (isSessionChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5f7] px-4 text-[#1f2430]">
+        <div className="w-full max-w-md rounded-[30px] border border-[#e5e8f0] bg-white px-8 py-10 text-center shadow-[0_20px_60px_rgba(25,30,60,0.08)]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#5b3df5] text-white shadow-[0_18px_30px_rgba(91,61,245,0.24)]">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <h1 className="mt-5 text-[2rem] font-bold tracking-[-0.04em] text-[#1f2430]">
+            Verifying admin access
+          </h1>
+          <p className="mt-3 text-[15px] leading-7 text-[#8c90a0]">
+            Please wait while we confirm your session and permissions.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <LoginPage
-        onLogin={() => setIsLoggedIn(true)}
+        onLogin={handleLogin}
         onGoogleLogin={() => setIsLoggedIn(true)}
       />
     );
   }
 
   if (activePage === "members") {
-    return (
-      <MembersPage
-        onLogout={() => setIsLoggedIn(false)}
-        onNavigate={handleNavigate}
-        activePage={activePage}
-        showSettingsPage={showSettingsPage}
-        setShowSettingsPage={setShowSettingsPage}
-      />
-    );
-  }
+  return (
+    <MembersPage
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+      activePage={activePage}
+      showSettingsPage={showSettingsPage}
+      setShowSettingsPage={setShowSettingsPage}
+      defaultFilter={membersFilter}
+      adminUser={adminUser}
+    />
+  );
+}
 
   if (activePage === "events") {
     return (
       <EventsPage
-        onLogout={() => setIsLoggedIn(false)}
+        onLogout={handleLogout}
         onNavigate={handleNavigate}
         activePage={activePage}
         showSettingsPage={showSettingsPage}
         setShowSettingsPage={setShowSettingsPage}
         eventCategoryFilter={eventCategoryFilter}
         setEventCategoryFilter={setEventCategoryFilter}
+        adminUser={adminUser}
       />
     );
   }
 
+  if (activePage === "eventDetails") {
+    return (
+      <EventDetailsPage
+        event={selectedEvent}
+        onNavigate={handleNavigate}
+        onLogout={handleLogout}
+        activePage={activePage}
+        showSettingsPage={showSettingsPage}
+        setShowSettingsPage={setShowSettingsPage}
+        adminUser={adminUser}
+      />
+    );
+  }
+
+
+  if (activePage === "eventReport") {
+  return (
+    <EventReportPage
+      event={selectedEvent}
+      onNavigate={handleNavigate}
+      onLogout={handleLogout}
+      activePage={activePage}
+      showSettingsPage={showSettingsPage}
+      setShowSettingsPage={setShowSettingsPage}
+      adminUser={adminUser}
+    />
+  );
+}
+
+
   if (activePage === "analytics") {
     return (
       <AnalyticsPage
-        onLogout={() => setIsLoggedIn(false)}
+        onLogout={handleLogout}
         onNavigate={handleNavigate}
         activePage={activePage}
         showSettingsPage={showSettingsPage}
         setShowSettingsPage={setShowSettingsPage}
+        adminUser={adminUser}
       />
     );
   }
@@ -4838,11 +9048,12 @@ export default function App() {
   if (activePage === "Memberclassification") {
     return (
       <Memberclassification
-        onLogout={() => setIsLoggedIn(false)}
+        onLogout={handleLogout}
         onNavigate={handleNavigate}
         activePage={activePage}
         showSettingsPage={showSettingsPage}
         setShowSettingsPage={setShowSettingsPage}
+        adminUser={adminUser}
       />
     );
   }
@@ -4850,22 +9061,25 @@ export default function App() {
   if (activePage === "settings" && showSettingsPage) {
     return (
       <SettingsPage
-        onLogout={() => setIsLoggedIn(false)}
+        onLogout={handleLogout}
         onNavigate={handleNavigate}
         activePage={activePage}
         showSettingsPage={showSettingsPage}
         setShowSettingsPage={setShowSettingsPage}
+        adminUser={adminUser}
+        onAdminUpdate={handleLogin}
       />
     );
   }
 
   return (
     <DashboardPage
-      onLogout={() => setIsLoggedIn(false)}
+      onLogout={handleLogout}
       onNavigate={handleNavigate}
       activePage={activePage}
       showSettingsPage={showSettingsPage}
       setShowSettingsPage={setShowSettingsPage}
+      adminUser={adminUser}
     />
   );
 }

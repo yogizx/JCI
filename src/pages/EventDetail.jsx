@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, Link, useParams } from 'react-router-dom'
 import { 
   Calendar, MapPin, Clock, User, ArrowRight, CheckCircle2, 
   Navigation, Mail, Phone, ExternalLink, ArrowLeft, 
@@ -8,13 +8,16 @@ import {
 
 export default function EventDetail() {
   const location = useLocation();
+  const { id } = useParams();
   const isPortal = location.pathname.startsWith('/portal');
+  const [eventData, setEventData] = useState(null);
+  const [loading, setLoading] = useState(Boolean(id));
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const eventData = {
+  const fallbackEventData = {
     title: "Vision 2024: Empowering Tomorrow's Leaders",
     category: "Leadership Summit",
     status: "Registration Open",
@@ -41,6 +44,107 @@ export default function EventDetail() {
     ]
   }
 
+  useEffect(() => {
+    const fetchEvent = async () => {
+      if (!id) {
+        setEventData(fallbackEventData)
+        return
+      }
+
+      try {
+        setLoading(true)
+        const token = localStorage.getItem('token')
+        const res = await fetch(`/api/events/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          setEventData({
+            ...fallbackEventData,
+            title: data.message || 'Event not found',
+            description: 'This event is not available in the member portal.',
+            highlights: [],
+          })
+          return
+        }
+
+        const event = data.event
+        const gallery = Array.isArray(event.eventGallery) && event.eventGallery.length
+          ? event.eventGallery
+          : fallbackEventData.highlights
+
+        setEventData({
+          title: event.eventName || 'Untitled Event',
+          category: event.vertical || 'Event',
+          status: 'Registration Open',
+          date: event.date || 'Date TBD',
+          time: event.time || 'Time TBD',
+          venue: event.venue || 'Venue TBD',
+          address: event.venue || 'Venue TBD',
+          program: event.program || '',
+          idType: event.idType || '',
+          facultySpeaker: event.facultySpeaker || '',
+          zoneNationalPerson: event.zoneNationalPerson || '',
+          invitation: event.invitation || '',
+          banner: event.banner || fallbackEventData.highlights[0],
+          chiefGuest: {
+            name: event.chiefGuest || 'Not added',
+            role: event.chiefGuestId ? `ID: ${event.chiefGuestId}` : 'Chief Guest',
+          },
+          guestOfHonor: {
+            name: event.guestOfHonor || 'Not added',
+            role: event.guestOfHonorId ? `ID: ${event.guestOfHonorId}` : 'Guest of Honor',
+          },
+          description: event.eventOverview || 'No overview provided.',
+          highlights: gallery,
+          agendaItems: Array.isArray(event.agendaItems) ? event.agendaItems : [],
+          managementAgenda: event.managementAgenda || {},
+          secretaryName: event.secretaryName || '',
+          secretaryPerson: event.secretaryPerson || '',
+        })
+      } catch (err) {
+        console.error('Error fetching event detail:', err)
+        setEventData({
+          ...fallbackEventData,
+          title: 'Unable to load event',
+          description: 'Please try again later.',
+          highlights: [],
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchEvent()
+  }, [id])
+
+  const currentEvent = eventData || fallbackEventData
+  const detailRows = [
+    ['Program', currentEvent.program],
+    ['ID Type', currentEvent.idType],
+    ['Faculty / Speaker', currentEvent.facultySpeaker],
+    ['Zone / National Person', currentEvent.zoneNationalPerson],
+    ['Secretary', [currentEvent.secretaryName, currentEvent.secretaryPerson].filter(Boolean).join(' - ')],
+  ].filter(([, value]) => value)
+  const managementAgendaRows = Object.entries(currentEvent.managementAgenda || {})
+    .filter(([, value]) => {
+      if (Array.isArray(value)) return value.some(Boolean)
+      return Boolean(value)
+    })
+  const agendaRows = currentEvent.agendaItems?.filter(Boolean) || []
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen ${isPortal ? 'bg-transparent pb-20' : 'bg-slate-50'} flex items-center justify-center`}>
+        <div className="rounded-3xl border border-slate-100 bg-white px-8 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-r-transparent"></div>
+          <p className="text-sm font-bold text-slate-600">Loading event details...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`min-h-screen ${isPortal ? 'bg-transparent pb-20' : 'bg-slate-50'}`}>
       {!isPortal && (
@@ -58,7 +162,7 @@ export default function EventDetail() {
         {/* Background Image */}
         <div className="absolute inset-0">
           <img 
-            src="https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=2070&auto=format&fit=crop" 
+            src={currentEvent.banner || "https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=2070&auto=format&fit=crop"} 
             className="w-full h-full object-cover opacity-30 grayscale"
             alt="Event Backdrop"
           />
@@ -68,16 +172,16 @@ export default function EventDetail() {
         <div className="relative z-10 max-w-7xl mx-auto px-6 h-full flex flex-col justify-center">
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <span className="bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full">
-              {eventData.category}
+              {currentEvent.category}
             </span>
             <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-              {eventData.status}
+              {currentEvent.status}
             </span>
           </div>
 
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white max-w-4xl leading-[1.1] mb-8">
-            {eventData.title}
+            {currentEvent.title}
           </h1>
 
           <div className="absolute bottom-[-60px] lg:right-10 pointer-events-none opacity-10 hidden lg:block">
@@ -99,28 +203,41 @@ export default function EventDetail() {
               <InfoCard 
                 icon={<Calendar className="text-blue-500" />}
                 label="Date & Time"
-                val={eventData.date}
-                sub={eventData.time}
+                val={currentEvent.date}
+                sub={currentEvent.time}
               />
               <InfoCard 
                 icon={<MapPin className="text-red-500" />}
                 label="Venue"
-                val={eventData.venue}
-                sub="Anna Nagar, Madurai"
+                val={currentEvent.venue}
+                sub={currentEvent.program || "Program details"}
               />
               <InfoCard 
                 icon={<Users className="text-purple-500" />}
                 label="Chief Guest"
-                val={eventData.chiefGuest.name}
-                sub={eventData.chiefGuest.role}
+                val={currentEvent.chiefGuest.name}
+                sub={currentEvent.chiefGuest.role}
               />
               <InfoCard 
                 icon={<Heart className="text-pink-500" />}
                 label="Guest of Honor"
-                val={eventData.guestOfHonor.name}
-                sub={eventData.guestOfHonor.role}
+                val={currentEvent.guestOfHonor.name}
+                sub={currentEvent.guestOfHonor.role}
               />
             </div>
+
+            {detailRows.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {detailRows.map(([label, value]) => (
+                  <InfoCard
+                    key={label}
+                    icon={<Info className="text-blue-500" />}
+                    label={label}
+                    val={value}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Event Description */}
             <div className="bg-white rounded-3xl p-8 lg:p-12 border border-slate-100 shadow-sm">
@@ -130,10 +247,32 @@ export default function EventDetail() {
                 </div>
                 <div className="prose prose-slate max-w-none">
                   <p className="text-slate-600 leading-relaxed text-lg whitespace-pre-line">
-                    {eventData.description}
+                    {currentEvent.description}
                   </p>
                 </div>
             </div>
+
+            {(agendaRows.length > 0 || managementAgendaRows.length > 0) && (
+              <div className="bg-white rounded-3xl p-8 lg:p-12 border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-1.5 h-8 bg-blue-600 rounded-full"></div>
+                  <h3 className="text-2xl font-bold text-slate-800">Agenda Details</h3>
+                </div>
+                <div className="space-y-4">
+                  {agendaRows.map((item, index) => (
+                    <div key={`${item}-${index}`} className="rounded-2xl bg-slate-50 px-5 py-4 text-sm font-semibold leading-relaxed text-slate-700">
+                      {index + 1}. {item}
+                    </div>
+                  ))}
+                  {managementAgendaRows.map(([key, value]) => (
+                    <div key={key} className="rounded-2xl bg-slate-50 px-5 py-4 text-sm leading-relaxed text-slate-700">
+                      <span className="font-black capitalize text-slate-900">{key.replace(/([A-Z])/g, ' $1')}:</span>{' '}
+                      {Array.isArray(value) ? value.filter(Boolean).join(', ') : value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Highlights Gallery */}
             <div className="space-y-6">
@@ -145,7 +284,7 @@ export default function EventDetail() {
                    <button className="text-blue-600 font-bold text-sm hover:underline">View All</button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {eventData.highlights.map((img, idx) => (
+                  {currentEvent.highlights.map((img, idx) => (
                     <div key={idx} className="aspect-video bg-slate-200 rounded-[2rem] overflow-hidden group border border-white shadow-md">
                       <img 
                         src={img} 
@@ -156,6 +295,16 @@ export default function EventDetail() {
                   ))}
                 </div>
             </div>
+
+            {currentEvent.invitation && (
+              <div className="bg-white rounded-3xl p-8 lg:p-12 border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-1.5 h-8 bg-blue-600 rounded-full"></div>
+                  <h3 className="text-2xl font-bold text-slate-800">Event Invitation</h3>
+                </div>
+                <img src={currentEvent.invitation} alt="Event Invitation" className="w-full rounded-[2rem] border border-slate-100 object-contain" />
+              </div>
+            )}
           </div>
 
           {/* Right Column: Sidebar */}
@@ -171,9 +320,9 @@ export default function EventDetail() {
                   <MapPin size={20} />
                 </div>
                 <div>
-                  <p className="font-bold text-slate-800 text-sm">{eventData.venue}</p>
+                  <p className="font-bold text-slate-800 text-sm">{currentEvent.venue}</p>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    {eventData.address}
+                    {currentEvent.address}
                   </p>
                 </div>
               </div>

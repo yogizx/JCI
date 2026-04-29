@@ -30,77 +30,62 @@ function useCountdown(targetDate) {
 
 const VERTICALS = ['All', 'Management', 'Training', 'Business', 'Community Development', 'Growth & Development', 'Internationalism']
 
-const EVENTS = [
-  {
-    title: "Empowering Future Leaders Workshop",
-    status: "ONGOING", statusCol: "bg-teal-50 text-teal-700 border-teal-200", statusDot: "bg-teal-500",
-    category: "TRAINING", catCol: "bg-[#FBC764] text-[#6B4F12]",
-    vertical: "Training",
-    image: "https://images.unsplash.com/photo-1552581234-26160f608093?q=80&w=2070&auto=format&fit=crop",
-    date: "May 24, 2024", time: "10:00 AM - 04:00 PM", loc: "JCI Training Hall, Madurai",
-    role: "GUEST OF HONOUR", name: "Dr. Sarah Michael",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-  },
-  {
-    title: "Global Entrepreneur Summit 2024",
-    status: "UPCOMING", statusCol: "bg-blue-50 text-blue-700 border-blue-200", statusDot: "bg-blue-500",
-    category: "BUSINESS", catCol: "bg-[#00153D] text-white",
-    vertical: "Business",
-    image: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2064&auto=format&fit=crop",
-    date: "June 12, 2024", time: "09:00 AM - 06:00 PM", loc: "Fortune Pandiyan Hotel, Madurai",
-    role: "CHIEF GUEST", name: "Hon. Minister for Industry",
-    avatar: "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=150"
-  },
-  {
-    title: "Blood Donation Drive: LifeSavers 2024",
-    status: "UPCOMING", statusCol: "bg-blue-50 text-blue-700 border-blue-200", statusDot: "bg-blue-500",
-    category: "COMMUNITY", catCol: "bg-[#A0813D] text-white",
-    vertical: "Community Development",
-    image: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?q=80&w=2074&auto=format&fit=crop",
-    date: "June 20, 2024", time: "08:00 AM - 02:00 PM", loc: "Government Rajaji Hospital, Madurai",
-    role: "COORDINATOR", name: "Jc. Dr. Anand Kumar",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150"
-  },
-  {
-    title: "Management Leadership Conclave",
-    status: "UPCOMING", statusCol: "bg-blue-50 text-blue-700 border-blue-200", statusDot: "bg-blue-500",
-    category: "MANAGEMENT", catCol: "bg-slate-700 text-white",
-    vertical: "Management",
-    image: "https://images.unsplash.com/photo-1515169067868-5387ec356754?q=80&w=2070&auto=format&fit=crop",
-    date: "July 05, 2024", time: "09:00 AM - 05:00 PM", loc: "Taj Gateway Hotel, Madurai",
-    role: "KEYNOTE SPEAKER", name: "Jc. Meena Krishnan",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150"
-  },
-  {
-    title: "International Youth Exchange Program",
-    status: "UPCOMING", statusCol: "bg-blue-50 text-blue-700 border-blue-200", statusDot: "bg-blue-500",
-    category: "INTERNATIONAL", catCol: "bg-purple-700 text-white",
-    vertical: "Internationalism",
-    image: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=2069&auto=format&fit=crop",
-    date: "Aug 10, 2024", time: "10:00 AM - 04:00 PM", loc: "JCI Madurai HQ",
-    role: "PROGRAM LEAD", name: "Jc. Ravi Shankar",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-  },
-  {
-    title: "NALANDA Personal Growth Workshop",
-    status: "COMPLETED", statusCol: "bg-slate-100 text-slate-600 border-slate-200", statusDot: "bg-slate-400",
-    category: "GROWTH", catCol: "bg-emerald-700 text-white",
-    vertical: "Growth & Development",
-    image: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2070&auto=format&fit=crop",
-    date: "Apr 15, 2024", time: "09:00 AM - 03:00 PM", loc: "JCI Training Centre, Madurai",
-    role: "FACILITATOR", name: "Jc. Priya Devi",
-    avatar: "https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?auto=format&fit=crop&q=80&w=150"
-  },
-]
-
 export default function Events() {
   const countdown = useCountdown(EVENT_DATE)
 
+  const [events, setEvents] = useState([])
+  const [loading, setLoading] = useState(true)
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedVertical, setSelectedVertical] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState('All')
   const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    fetchEvents()
+  }, [])
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true)
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token')
+      const res = await fetch('/api/events', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      const data = await res.json()
+      
+      const mappedEvents = (data.events || []).map(ev => {
+        // Simple status logic based on date
+        const eventDate = new Date(ev.date)
+        const isPast = eventDate < new Date().setHours(0,0,0,0)
+        
+        return {
+          id: ev._id,
+          title: ev.eventName,
+          status: isPast ? "COMPLETED" : "UPCOMING",
+          statusCol: isPast ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200",
+          statusDot: isPast ? "bg-slate-400" : "bg-blue-500",
+          category: (ev.vertical || "Event").toUpperCase(),
+          catCol: "bg-[#00153D] text-white",
+          vertical: ev.vertical,
+          image: ev.banner || "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2064&auto=format&fit=crop",
+          date: ev.date,
+          time: ev.time,
+          loc: ev.venue || "TBD",
+          role: "CHIEF GUEST",
+          name: ev.chiefGuest || "JCI Member",
+          avatar: "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=150"
+        }
+      })
+      setEvents(mappedEvents)
+    } catch (error) {
+      console.error('Error fetching events:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -114,7 +99,7 @@ export default function Events() {
   }, [])
 
   // Filter events
-  const filteredEvents = EVENTS.filter(ev => {
+  const filteredEvents = events.filter(ev => {
     const matchVertical = selectedVertical === 'All' || ev.vertical === selectedVertical
     const matchSearch = ev.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ev.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -319,7 +304,14 @@ export default function Events() {
       </div>
 
       {/* Events Grid */}
-      {filteredEvents.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-20">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[#A0813D] border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+          </div>
+          <p className="mt-4 text-slate-500 font-bold">Fetching latest events...</p>
+        </div>
+      ) : filteredEvents.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-3xl border border-slate-100">
           <div className="text-4xl mb-4">🔍</div>
           <p className="text-lg font-bold text-[#00153D] mb-2">No events found</p>
@@ -332,7 +324,7 @@ export default function Events() {
               key={i}
               className="bg-white rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl border border-slate-100 hover:border-[#A0813D]/20 transition-all duration-300 flex flex-col group hover:-translate-y-1"
             >
-              <Link to="/portal/events/1" className="relative h-52 w-full overflow-hidden block">
+              <Link to={`/portal/events/${ev.id}`} className="relative h-52 w-full overflow-hidden block">
                 <img
                   src={ev.image}
                   alt={ev.title}
@@ -350,7 +342,7 @@ export default function Events() {
               </Link>
 
               <div className="p-6 flex flex-col flex-1">
-                <Link to="/portal/events/1">
+                <Link to={`/portal/events/${ev.id}`}>
                   <h3 className="font-bold text-[#00153D] text-lg leading-tight mb-4 line-clamp-2 min-h-[52px] hover:text-[#A0813D] transition-colors">
                     {ev.title}
                   </h3>
@@ -381,7 +373,7 @@ export default function Events() {
 
                 <div className="flex gap-3 mt-auto">
                   <Link
-                    to="/portal/events/1"
+                    to={`/portal/events/${ev.id}`}
                     className="flex-1 border border-slate-200 text-[#00153D] py-3 rounded-xl text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition-colors flex items-center justify-center"
                   >
                     Details

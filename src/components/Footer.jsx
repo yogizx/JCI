@@ -33,11 +33,11 @@ export default function Footer() {
             <h4 className="mb-8 text-sm font-black uppercase tracking-[0.2em] text-jci-blue">Quick Links</h4>
             <ul className="space-y-4 text-sm text-slate-400 font-bold">
               <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
-              <li><Link to="/about" className="hover:text-white transition-colors">About JCI</Link></li>
-              <li><Link to="/about" className="hover:text-white transition-colors">JCI Creed</Link></li>
-              <li><Link to="/about" className="hover:text-white transition-colors">About JCI India</Link></li>
+              <li><Link to="/about/jci" className="hover:text-white transition-colors">About JCI</Link></li>
+              <li><Link to="/about/creed" className="hover:text-white transition-colors">JCI Creed</Link></li>
+              {/* <li><Link to="/about" className="hover:text-white transition-colors">About JCI India</Link></li> */}
               <li><Link to="/membership" className="hover:text-white transition-colors">Benefits for Members</Link></li>
-              <li><Link to="/membership" className="hover:text-white transition-colors">Join JCI INDIA</Link></li>
+              <li><Link to="/membership" className="hover:text-white transition-colors">Join JCI Madurai Central</Link></li>
             </ul>
           </div>
 

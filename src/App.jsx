@@ -32,7 +32,7 @@ function AppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col font-jakarta bg-white text-slate-900">
-      {!isLoginPage && !isPortal && <Navbar />}
+      {!isPortal && <Navbar />}
 
       <main className="flex-1">
         <Routes>

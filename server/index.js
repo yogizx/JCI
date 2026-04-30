@@ -1042,7 +1042,8 @@ app.put('/api/admin/events/:id/report', authenticate, authorize(...ADMIN_ROLES),
   }
 });
 
-registerFrontend();
+// NOTE: Static frontend and catch-all routes are registered inside startServer()
+// after all API routes, to ensure correct Express route ordering.
 
 app.use('/api/*splat', (req, res) => {
   res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} was not found.` });
@@ -1076,6 +1077,9 @@ async function startServer() {
       : `Admin account ready in MongoDB with username "${adminBootstrap.username}".`
   );
 
+  // Register frontend static files AFTER all API routes
+  registerFrontend();
+
   // Seed default settings
   const welcomeKey = 'dashboard_welcome_message';
   const welcomeExists = await SystemSetting.exists({ key: welcomeKey });
@@ -1098,37 +1102,6 @@ async function startServer() {
     });
     console.log('Default dashboard banner image seeded.');
   }
-
-  // Serve built React frontend
-  const fs = require('fs');
-  const distPath = path.resolve(__dirname, '../dist');
-  console.log(`[Static] NODE_ENV=${process.env.NODE_ENV}`);
-  console.log(`[Static] Serving static files from: ${distPath}`);
-  console.log(`[Static] dist/index.html exists: ${fs.existsSync(path.join(distPath, 'index.html'))}`);
-  console.log(`[Static] dist/admin/index.html exists: ${fs.existsSync(path.join(distPath, 'admin', 'index.html'))}`);
-
-  // Serve all static assets (JS, CSS, images, etc.)
-  app.use(express.static(distPath));
-
-  // Admin SPA catch-all: /admin/* → dist/admin/index.html (Express 5 named wildcard)
-  app.get('/admin/*splat', (req, res) => {
-    const adminIndex = path.join(distPath, 'admin', 'index.html');
-    if (fs.existsSync(adminIndex)) {
-      res.sendFile(adminIndex);
-    } else {
-      res.status(404).send('Admin app not built. Run: npm run build');
-    }
-  });
-
-  // Main SPA catch-all: everything else → dist/index.html (Express 5 named wildcard)
-  app.get('/*splat', (req, res) => {
-    const mainIndex = path.join(distPath, 'index.html');
-    if (fs.existsSync(mainIndex)) {
-      res.sendFile(mainIndex);
-    } else {
-      res.status(503).send('App not built yet. Run: npm run build');
-    }
-  });
 
   app.listen(PORT, () => {
     console.log(`API server listening on port ${PORT}.`);

@@ -39,6 +39,7 @@ dns.setDefaultResultOrder('ipv4first');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
+const frontendDistPath = path.resolve(__dirname, '../dist');
 
 const PORT = Number(process.env.PORT || 5000);
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -56,6 +57,35 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
   next();
 });
+
+const registerFrontend = () => {
+  const fs = require('fs');
+  const frontendIndexPath = path.join(frontendDistPath, 'index.html');
+  const adminIndexPath = path.join(frontendDistPath, 'admin', 'index.html');
+
+  console.log(`[Static] NODE_ENV=${process.env.NODE_ENV}`);
+  console.log(`[Static] Checking dist at: ${frontendDistPath}`);
+  console.log(`[Static] dist/admin/index.html exists: ${fs.existsSync(adminIndexPath)}`);
+
+  if (!fs.existsSync(frontendIndexPath)) {
+    console.warn('[Static] dist/index.html NOT found - React app will not be served. Run npm run build first.');
+    return;
+  }
+
+  console.log('[Static] dist/index.html found - serving React app.');
+  app.use(express.static(frontendDistPath));
+  app.use('/admin', (req, res) => {
+    if (fs.existsSync(adminIndexPath)) {
+      return res.sendFile(adminIndexPath);
+    }
+    return res.status(404).send('Admin app not built. Run: npm run build');
+  });
+
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    return res.sendFile(frontendIndexPath);
+  });
+};
 
 const parsePositiveInt = (value, fallback, max = 200) => {
   const parsed = Number.parseInt(value, 10);
@@ -1011,6 +1041,8 @@ app.put('/api/admin/events/:id/report', authenticate, authorize(...ADMIN_ROLES),
     return res.status(500).json({ message: 'Unable to save report.' });
   }
 });
+
+registerFrontend();
 
 app.use('/api/*splat', (req, res) => {
   res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} was not found.` });
